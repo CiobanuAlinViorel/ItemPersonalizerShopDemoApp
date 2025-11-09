@@ -1,5 +1,5 @@
 import { LogoElement, TextElement } from "@/lib/stores/ShoppingCart";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Konva from 'konva';
 import { Stage, Layer, Rect, Text as KonvaText, Image as KonvaImage, Transformer } from 'react-konva';
 
@@ -25,6 +25,41 @@ export const Product2DEditor = ({
     onEditText
 }: Product2DEditorProps) => {
     const [images, setImages] = useState<Map<string, HTMLImageElement>>(new Map());
+    const transformerRef = useRef<Konva.Transformer>(null);
+    const selectedNodeRef = useRef<Konva.Node | null>(null);
+
+    // Sync transformer cu selected node
+    useEffect(() => {
+        if (!transformerRef.current || !stageRef.current) return;
+
+        const transformer = transformerRef.current;
+        const stage = stageRef.current;
+
+        if (selectedId) {
+            const node = stage.findOne(`#${selectedId}`);
+            selectedNodeRef.current = node;
+
+            if (node) {
+                transformer.nodes([node]);
+                transformer.getLayer()?.batchDraw();
+            } else {
+                transformer.nodes([]);
+            }
+        } else {
+            transformer.nodes([]);
+            selectedNodeRef.current = null;
+        }
+
+        transformer.getLayer()?.batchDraw();
+    }, [selectedId]);
+
+    // Force re-attach transformer când elementele se schimbă
+    useEffect(() => {
+        if (transformerRef.current && selectedNodeRef.current) {
+            transformerRef.current.nodes([selectedNodeRef.current]);
+            transformerRef.current.getLayer()?.batchDraw();
+        }
+    }, [textElements, logoElements]);
 
     // Încarcă imaginile pentru logo-uri
     useEffect(() => {
