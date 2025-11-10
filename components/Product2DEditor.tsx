@@ -27,6 +27,58 @@ export const Product2DEditor = ({
     const [images, setImages] = useState<Map<string, HTMLImageElement>>(new Map());
     const transformerRef = useRef<Konva.Transformer>(null);
     const selectedNodeRef = useRef<Konva.Node | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [stageSize, setStageSize] = useState({ width: 800, height: 600 });
+    const [scale, setScale] = useState(1);
+
+    // Dimensiuni originale ale canvas-ului (pentru calcularea scale-ului)
+    const originalWidth = 800;
+    const originalHeight = 600;
+
+    // Actualizează dimensiunile stage-ului în funcție de container
+    const updateStageSize = () => {
+        if (containerRef.current) {
+            const container = containerRef.current;
+            const containerWidth = container.clientWidth;
+            const containerHeight = container.clientHeight;
+
+            // Calculează scale-ul pentru a păstra aspect ratio-ul
+            const scaleX = containerWidth / originalWidth;
+            const scaleY = containerHeight / originalHeight;
+            const newScale = Math.min(scaleX, scaleY, 1); // Nu scale up peste 100%
+
+            setScale(newScale);
+
+            const newWidth = originalWidth * newScale;
+            const newHeight = originalHeight * newScale;
+
+            setStageSize({
+                width: newWidth,
+                height: newHeight
+            });
+
+            // Force re-draw după resize
+            setTimeout(updateCanvas, 100);
+        }
+    };
+
+    // Resize observer pentru a detecta schimbări în dimensiunea containerului
+    useEffect(() => {
+        updateStageSize();
+
+        const resizeObserver = new ResizeObserver(updateStageSize);
+        if (containerRef.current) {
+            resizeObserver.observe(containerRef.current);
+        }
+
+        // Resize la window resize
+        window.addEventListener('resize', updateStageSize);
+
+        return () => {
+            resizeObserver.disconnect();
+            window.removeEventListener('resize', updateStageSize);
+        };
+    }, []);
 
     // Sync transformer cu selected node
     useEffect(() => {
@@ -51,7 +103,7 @@ export const Product2DEditor = ({
         }
 
         transformer.getLayer()?.batchDraw();
-    }, [selectedId]);
+    }, [selectedId, scale]); // Adăugăm scale în dependencies
 
     // Force re-attach transformer când elementele se schimbă
     useEffect(() => {
@@ -59,7 +111,7 @@ export const Product2DEditor = ({
             transformerRef.current.nodes([selectedNodeRef.current]);
             transformerRef.current.getLayer()?.batchDraw();
         }
-    }, [textElements, logoElements]);
+    }, [textElements, logoElements, scale]);
 
     // Încarcă imaginile pentru logo-uri
     useEffect(() => {
@@ -93,7 +145,7 @@ export const Product2DEditor = ({
     // Actualizează când se schimbă elementele
     useEffect(() => {
         updateCanvas();
-    }, [textElements, logoElements, background]);
+    }, [textElements, logoElements, background, scale]);
 
     const handleStageClick = (e: Konva.KonvaEventObject<MouseEvent>) => {
         if (e.target === e.target.getStage()) {
@@ -107,85 +159,125 @@ export const Product2DEditor = ({
         onEditText(text);
     };
 
+    // Ajustează coordonatele și dimensiunile pentru scalare
+    const getScaledValue = (value: number) => value * scale;
+
     return (
-        <div className="border-2 border-gray-300 rounded-lg overflow-hidden shadow-xl">
-            <Stage
-                width={800}
-                height={600}
-                ref={stageRef}
-                onMouseDown={handleStageClick}
-                onMouseUp={updateCanvas}
-                onTouchEnd={updateCanvas}
+        <div
+            ref={containerRef}
+            className="w-full h-full max-w-full max-h-full border-2 border-gray-300 rounded-lg overflow-hidden shadow-xl flex items-center justify-center bg-gray-50"
+            style={{ minHeight: '300px' }} // Înălțime minimă pentru mobile
+        >
+            {/* Container pentru stage cu dimensiuni dinamice */}
+            <div
+                className="flex items-center justify-center"
+                style={{
+                    width: `${stageSize.width}px`,
+                    height: `${stageSize.height}px`,
+                    transform: `scale(${scale})`
+                }}
             >
-                <Layer>
-                    <Rect x={0} y={0} width={800} height={600} fill={background} />
-                </Layer>
-
-                <Layer>
-                    {textElements.map(text => (
-                        <KonvaText
-                            key={text.id}
-                            id={text.id}
-                            text={text.text}
-                            x={text.x}
-                            y={text.y}
-                            fontSize={text.fontSize}
-                            fontFamily={text.fontFamily}
-                            fill={text.fill}
-                            rotation={text.rotation}
-                            scaleX={text.scaleX}
-                            scaleY={text.scaleY}
-                            draggable={text.draggable}
-                            onClick={() => {
-                                onSelect(text.id);
-                            }}
-                            onTap={() => {
-                                onSelect(text.id);
-                            }}
-                            onDblClick={() => handleTextDoubleClick(text)}
-                            onDblTap={() => handleTextDoubleClick(text)}
-                            onDragEnd={updateCanvas}
-                            onTransformEnd={updateCanvas}
+                <Stage
+                    width={stageSize.width}
+                    height={stageSize.height}
+                    ref={stageRef}
+                    onMouseDown={handleStageClick}
+                    onMouseUp={updateCanvas}
+                    onTouchEnd={updateCanvas}
+                    scaleX={scale}
+                    scaleY={scale}
+                >
+                    <Layer>
+                        {/* Background scalat corect */}
+                        <Rect
+                            x={0}
+                            y={0}
+                            width={originalWidth}
+                            height={originalHeight}
+                            fill={background}
                         />
-                    ))}
+                    </Layer>
 
-                    {logoElements.map(logo => {
-                        const image = images.get(logo.id);
-                        if (!image) return null;
-
-                        return (
-                            <KonvaImage
-                                key={logo.id}
-                                id={logo.id}
-                                image={image}
-                                x={logo.x}
-                                y={logo.y}
-                                width={logo.width}
-                                height={logo.height}
-                                rotation={logo.rotation}
-                                scaleX={logo.scaleX}
-                                scaleY={logo.scaleY}
-                                draggable={logo.draggable}
+                    <Layer>
+                        {textElements.map(text => (
+                            <KonvaText
+                                key={text.id}
+                                id={text.id}
+                                text={text.text}
+                                x={getScaledValue(text.x)}
+                                y={getScaledValue(text.y)}
+                                fontSize={getScaledValue(text.fontSize)}
+                                fontFamily={text.fontFamily}
+                                fill={text.fill}
+                                rotation={text.rotation}
+                                scaleX={text.scaleX || 1}
+                                scaleY={text.scaleY || 1}
+                                draggable={text.draggable}
                                 onClick={() => {
-                                    onSelect(logo.id);
+                                    onSelect(text.id);
                                 }}
                                 onTap={() => {
-                                    onSelect(logo.id);
+                                    onSelect(text.id);
                                 }}
+                                onDblClick={() => handleTextDoubleClick(text)}
+                                onDblTap={() => handleTextDoubleClick(text)}
                                 onDragEnd={updateCanvas}
                                 onTransformEnd={updateCanvas}
                             />
-                        );
-                    })}
+                        ))}
 
-                    {selectedId && (
-                        <Transformer
-                            nodes={[stageRef.current?.findOne(`#${selectedId}`) as Konva.Node]}
-                            onTransformEnd={updateCanvas}
-                        />
-                    )}
-                </Layer>
-            </Stage>
+                        {logoElements.map(logo => {
+                            const image = images.get(logo.id);
+                            if (!image) return null;
+
+                            return (
+                                <KonvaImage
+                                    key={logo.id}
+                                    id={logo.id}
+                                    image={image}
+                                    x={getScaledValue(logo.x)}
+                                    y={getScaledValue(logo.y)}
+                                    width={getScaledValue(logo.width)}
+                                    height={getScaledValue(logo.height)}
+                                    rotation={logo.rotation}
+                                    scaleX={logo.scaleX || 1}
+                                    scaleY={logo.scaleY || 1}
+                                    draggable={logo.draggable}
+                                    onClick={() => {
+                                        onSelect(logo.id);
+                                    }}
+                                    onTap={() => {
+                                        onSelect(logo.id);
+                                    }}
+                                    onDragEnd={updateCanvas}
+                                    onTransformEnd={updateCanvas}
+                                />
+                            );
+                        })}
+
+                        {selectedId && (
+                            <Transformer
+                                ref={transformerRef}
+                                boundBoxFunc={(oldBox, newBox) => {
+                                    // Limitează dimensiunile minime
+                                    if (newBox.width < 5 || newBox.height < 5) {
+                                        return oldBox;
+                                    }
+                                    return newBox;
+                                }}
+                                onTransformEnd={updateCanvas}
+                            />
+                        )}
+                    </Layer>
+                </Stage>
+            </div>
+
+            {/* Indicator de scalare pentru debugging (opțional) */}
+            {process.env.NODE_ENV === 'development' && (
+                <div className="absolute bottom-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
+                    Scale: {Math.round(scale * 100)}%
+                </div>
+            )}
         </div>
     );
 };

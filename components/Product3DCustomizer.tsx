@@ -1,8 +1,8 @@
 "use client";
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Download, ShoppingCart, Loader2, Maximize2, Minimize2, Trash2, Undo } from 'lucide-react';
+import { X, Download, ShoppingCart, Loader2, Maximize2, Minimize2, Trash2, Undo, Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -15,7 +15,6 @@ import { LogoElement, TextElement, useShoppingCartStore } from '@/lib/stores/Sho
 import { ProductPreview3D } from './ProductPreview3D';
 import { modelsMapper } from '@/lib/utils/modelsMapper';
 import { exportToGLB, generateThumbnail } from '@/lib/utils/exportUtils';
-
 
 export const COLOR_PALETTE = [
     '#FFFFFF', '#000000', '#7A3A2E', '#E8D9C3', '#A13E2E', '#737373',
@@ -39,42 +38,67 @@ interface EditHistory {
 }
 
 export default function Product3DCustomizer({ product, onClose }: Product3DCustomizerProps) {
+    // Refs
+    const stageRef = useRef<Konva.Stage>(null);
+
+    // State-uri principale
     const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
     const [textElements, setTextElements] = useState<TextElement[]>([]);
     const [logoElements, setLogoElements] = useState<LogoElement[]>([]);
     const [background, setBackground] = useState('#FFFFFF');
-    const [selectedFace, setSelectedFace] = useState('front');
+    const [objectColor, setObjectColor] = useState('#FFFFFF');
+    const [selectedTexture, setSelectedTexture] = useState<string | null>(null);
+    const [selectedId, setSelectedId] = useState<string | null>(null);
+
+    // State-uri UI și layout
     const [show3DPreview, setShow3DPreview] = useState(true);
     const [is3DExpanded, setIs3DExpanded] = useState(false);
+    const [showMobileMenu, setShowMobileMenu] = useState(false);
+    const [isMobile, setIsMobile] = useState(false);
+    const [persistent3D, setPersistent3D] = useState(false);
+
+    // State-uri pentru funcționalități avansate
     const [isExporting, setIsExporting] = useState(false);
-    const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [threeScene, setThreeScene] = useState<THREE.Scene | null>(null);
     const [editHistory, setEditHistory] = useState<EditHistory[]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
-    const [objectColor, setObjectColor] = useState('#FFFFFF');
-    const [threeScene, setThreeScene] = useState<THREE.Scene | null>(null);
 
-    const [selectedTexture, setSelectedTexture] = useState<string | null>(null);
-
-    // Funcție pentru selectarea texturii
-    const handleTextureSelect = (textureUrl: string) => {
-        setSelectedTexture(textureUrl);
-    };
-
-    const { addItem } = useShoppingCartStore();
-    const stageRef = useRef<Konva.Stage>(null);
-
-    const [activeView, setActiveView] = useState<ToolbarView>(null);
+    // State-uri pentru toolbar și editare - UNIFICATE
+    const [activeToolbarView, setActiveToolbarView] = useState<ToolbarView>(null);
     const [editingText, setEditingText] = useState<TextElement | null>(null);
 
-    // Funcție pentru editare text din 2D Editor
-    const handleEditTextFrom2D = (text: TextElement) => {
-        setEditingText(text);
-        setActiveView('text');
-    };
+    // Store
+    const { addItem } = useShoppingCartStore();
 
+    // Detectare dispozitiv și layout adaptiv
+    useEffect(() => {
+        const checkMobile = () => {
+            const mobile = window.innerWidth < 1024;
+            setIsMobile(mobile);
+            if (mobile) {
 
-    // Salvează starea în istoric
-    const saveToHistory = () => {
+                setShow3DPreview(false);
+            } else {
+
+                setShow3DPreview(true);
+            }
+        };
+
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
+    // Efect pentru persistenta 3D pe mobile
+    useEffect(() => {
+        if (isMobile && show3DPreview) {
+            setPersistent3D(true);
+        }
+    }, [isMobile, show3DPreview]);
+
+    // Gestionare istoric - folosind useCallback pentru stabilitate
+    const saveToHistory = useCallback(() => {
         const newHistory = editHistory.slice(0, historyIndex + 1);
         newHistory.push({
             textElements: [...textElements],
@@ -83,10 +107,54 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
         });
         setEditHistory(newHistory);
         setHistoryIndex(newHistory.length - 1);
-    };
+    }, [textElements, logoElements, background, editHistory, historyIndex]);
+
+    // Inițializare istoric
+    useEffect(() => {
+        saveToHistory();
+    }, []);
+
+    // Funcție unificată pentru schimbarea view-ului toolbar-ului
+    const handleToolbarViewChange = useCallback((newView: ToolbarView) => {
+        // Verifică dacă sunt modificări nesalvate doar când se schimbă view-ul sau se închide
+        if (isMobile && editingText && newView !== 'text') {
+            const confirm = window.confirm('Aveți modificări nesalvate. Sigur doriți să schimbați panoul?');
+            if (!confirm) return;
+        }
+
+        if (activeToolbarView === newView) {
+            // Închide panoul dacă face click pe același buton
+            setActiveToolbarView(null);
+            if (isMobile) {
+                setEditingText(null);
+            }
+        } else {
+            // Schimbă la noul view
+            setActiveToolbarView(newView);
+            if (newView !== 'text') {
+                setEditingText(null);
+            }
+        }
+    }, [activeToolbarView, editingText, isMobile]);
+
+    // Închidere panou toolbar cu gestionare modificări nesalvate
+    const handleCloseToolbarView = useCallback(() => {
+        if (isMobile && editingText) {
+            const confirm = window.confirm('Aveți modificări nesalvate. Sigur doriți să închideți?');
+            if (!confirm) return;
+        }
+        setActiveToolbarView(null);
+        setEditingText(null);
+    }, [editingText, isMobile]);
+
+    // Handler pentru editarea textului din 2D Editor
+    const handleEditTextFrom2D = useCallback((text: TextElement) => {
+        setEditingText(text);
+        setActiveToolbarView('text'); // Deschide automat panoul de text
+    }, []);
 
     // Undo functionality
-    const handleUndo = () => {
+    const handleUndo = useCallback(() => {
         if (historyIndex > 0) {
             const previousState = editHistory[historyIndex - 1];
             setTextElements(previousState.textElements);
@@ -94,10 +162,10 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
             setBackground(previousState.background);
             setHistoryIndex(historyIndex - 1);
         }
-    };
+    }, [historyIndex, editHistory]);
 
     // Delete selected element
-    const handleDelete = () => {
+    const handleDelete = useCallback(() => {
         if (selectedId) {
             if (selectedId.startsWith('text-')) {
                 setTextElements(prev => {
@@ -114,12 +182,12 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
             }
             setSelectedId(null);
         }
-    };
+    }, [selectedId, saveToHistory]);
 
     // Keyboard shortcuts
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.ctrlKey && e.key === 'z') {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
                 e.preventDefault();
                 handleUndo();
             } else if (e.key === 'Delete' || e.key === 'Backspace') {
@@ -130,44 +198,76 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
 
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [selectedId, historyIndex]);
+    }, [handleUndo, handleDelete]);
 
-    // Initialize customization
-    useEffect(() => {
-        saveToHistory();
+    // Handlers pentru elemente de personalizare
+    const handleCanvasUpdate = useCallback((newCanvas: HTMLCanvasElement) => {
+        setCanvas(newCanvas);
     }, []);
 
-    const handleCanvasUpdate = (newCanvas: HTMLCanvasElement) => {
-        setCanvas(newCanvas);
-    };
-
-    const handleAddText = (text: TextElement) => {
+    const handleAddText = useCallback((text: TextElement) => {
         setTextElements(prev => {
             const newElements = [...prev, text];
             saveToHistory();
             return newElements;
         });
-    };
+    }, [saveToHistory]);
 
-    const handleAddLogo = (logo: LogoElement) => {
+    const handleAddLogo = useCallback((logo: LogoElement) => {
         setLogoElements(prev => {
             const newElements = [...prev, logo];
             saveToHistory();
             return newElements;
         });
-    };
+    }, [saveToHistory]);
 
-    const handleChangeBackground = (color: string) => {
+    const handleChangeBackground = useCallback((color: string) => {
         setBackground(color);
         saveToHistory();
-    };
+    }, [saveToHistory]);
 
-    const handleObjectColorChange = (color: string) => {
+    const handleObjectColorChange = useCallback((color: string) => {
         setObjectColor(color);
-    };
+    }, []);
 
-    // Export GLB corect folosind utilitarele
-    const handleExportGLB = async () => {
+    const handleTextureSelect = useCallback((textureUrl: string) => {
+        setSelectedTexture(textureUrl);
+    }, []);
+
+    const handleEditText = useCallback((id: string, updates: Partial<TextElement>) => {
+        setTextElements(prev => {
+            const newElements = prev.map(el =>
+                el.id === id ? { ...el, ...updates } : el
+            );
+            saveToHistory();
+            return newElements;
+        });
+    }, [saveToHistory]);
+
+    const handleDeleteText = useCallback((id: string) => {
+        setTextElements(prev => {
+            const newElements = prev.filter(el => el.id !== id);
+            saveToHistory();
+            return newElements;
+        });
+        if (selectedId === id) {
+            setSelectedId(null);
+        }
+    }, [selectedId, saveToHistory]);
+
+    const handleDeleteLogo = useCallback((id: string) => {
+        setLogoElements(prev => {
+            const newElements = prev.filter(el => el.id !== id);
+            saveToHistory();
+            return newElements;
+        });
+        if (selectedId === id) {
+            setSelectedId(null);
+        }
+    }, [selectedId, saveToHistory]);
+
+    // Export GLB
+    const handleExportGLB = useCallback(async () => {
         if (!threeScene) {
             alert('❌ Scena 3D nu este încărcată. Așteptați...');
             return;
@@ -183,65 +283,22 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
         } finally {
             setIsExporting(false);
         }
-    };
+    }, [threeScene, product.name]);
 
-    // Export PNG corect
-    // const handleExportPNG = async () => {
-    //     if (!stageRef.current) {
-    //         alert('❌ Editorul nu este încărcat.');
-    //         return;
-    //     }
-
-    //     setIsExporting(true);
-    //     try {
-    //         await exportToPNG(stageRef, `design-${product.name}`);
-    //         console.log('✅ PNG exportat cu succes!');
-    //     } catch (error) {
-    //         console.error('❌ Eroare la exportul PNG:', error);
-    //         alert('❌ Eroare la exportul PNG. Încercați din nou.');
-    //     } finally {
-    //         setIsExporting(false);
-    //     }
-    // };
-
-    // Export ambele formate
-    // const handleExportBoth = async () => {
-    //     if (!stageRef.current || !threeScene) {
-    //         alert('❌ Componentele nu sunt încărcate complet.');
-    //         return;
-    //     }
-
-    //     setIsExporting(true);
-    //     try {
-    //         await Promise.all([
-    //             exportToPNG(stageRef, `design-${product.name}`),
-    //             exportToGLB(threeScene, `custom-${product.name}`)
-    //         ]);
-    //         console.log('✅ Ambele formate exportate cu succes!');
-    //     } catch (error) {
-    //         console.error('❌ Eroare la export:', error);
-    //         alert('❌ Eroare la export. Încercați din nou.');
-    //     } finally {
-    //         setIsExporting(false);
-    //     }
-    // };
-
-    // Add to cart function CORECTĂ
-    const handleAddToCart = async () => {
+    // Add to cart function
+    const handleAddToCart = useCallback(async () => {
         if (!stageRef.current) {
             alert('❌ Nu există design de salvat.');
             return;
         }
 
         try {
-            // Generează thumbnail pentru coș
             const thumbnail = generateThumbnail(stageRef, 300, 300);
 
             if (!thumbnail) {
                 throw new Error('Nu s-a putut genera thumbnail-ul');
             }
 
-            // Creează configurația de personalizare
             const customization = {
                 id: `custom-${Date.now()}`,
                 productId: product.id,
@@ -255,7 +312,6 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
                 createdAt: Date.now(),
             };
 
-            // Creează elementul de coș
             const cartItem = {
                 id: `item-${Date.now()}`,
                 name: `${product.name} (Personalizat)`,
@@ -268,10 +324,7 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
                 customization
             };
 
-            // Adaugă în coș
             addItem(cartItem);
-
-            // Afișează confirmare și închide
             alert('✅ Produs personalizat adăugat în coș!');
             onClose();
 
@@ -279,47 +332,32 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
             console.error('❌ Eroare la adăugarea în coș:', error);
             alert('❌ Eroare la adăugarea în coș. Încercați din nou.');
         }
-    };
+    }, [stageRef, product, background, textElements, logoElements, objectColor, canvas, addItem, onClose]);
 
-    const handleClose = () => {
+    // Închidere cu confirmare
+    const handleClose = useCallback(() => {
         if (textElements.length > 0 || logoElements.length > 0) {
             const confirm = window.confirm('⚠️ Aveți modificări nesalvate. Sigur doriți să închideți?');
             if (!confirm) return;
         }
         onClose();
-    };
+    }, [textElements, logoElements, onClose]);
 
-    const handleEditText = (id: string, updates: Partial<TextElement>) => {
-        setTextElements(prev => {
-            const newElements = prev.map(el =>
-                el.id === id ? { ...el, ...updates } : el
-            );
-            saveToHistory();
-            return newElements;
-        });
-    };
+    // Layout helpers
+    const getMainLayout = useCallback(() => {
+        return isMobile ? "flex-col" : "flex-row";
+    }, [isMobile]);
 
-    const handleDeleteText = (id: string) => {
-        setTextElements(prev => {
-            const newElements = prev.filter(el => el.id !== id);
-            saveToHistory();
-            return newElements;
-        });
-        if (selectedId === id) {
-            setSelectedId(null);
-        }
-    };
+    const getToolbarWidth = useCallback(() => {
+        return isMobile && "w-20";
+    }, [isMobile]);
 
-    const handleDeleteLogo = (id: string) => {
-        setLogoElements(prev => {
-            const newElements = prev.filter(el => el.id !== id);
-            saveToHistory();
-            return newElements;
-        });
-        if (selectedId === id) {
-            setSelectedId(null);
-        }
-    };
+    const getEditorWidth = useCallback(() => {
+        if (isMobile) return "w-full";
+        if (!show3DPreview) return "w-full";
+        if (is3DExpanded) return "w-0";
+        return "flex-1";
+    }, [isMobile, show3DPreview, is3DExpanded]);
 
     return (
         <AnimatePresence>
@@ -329,51 +367,72 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
                 exit={{ opacity: 0 }}
                 className="fixed inset-0 bg-white z-50 flex flex-col"
             >
-                {/* Header */}
-                <div className="bg-white border-b border-beige px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <h2 className="text-xl font-bold text-brown">{product.name}</h2>
-                        <div className="text-sm text-[#737373]">
-                            {product.dimensions.length} × {product.dimensions.width} × {product.dimensions.heigth}
+                {/* Header - Adaptiv pentru mobile */}
+                <div className="bg-white border-b border-beige px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2 sm:gap-4">
+                        {/* Mobile menu button */}
+                        {isMobile && (
+                            <Button
+                                onClick={() => setShowMobileMenu(!showMobileMenu)}
+                                variant="ghost"
+                                size="icon"
+                                className="text-[#737373]"
+                            >
+                                <Menu className="w-5 h-5" />
+                            </Button>
+                        )}
+
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+                            <h2 className="text-lg sm:text-xl font-bold text-brown truncate max-w-[200px] sm:max-w-none">
+                                {product.name}
+                            </h2>
+                            <div className="text-xs sm:text-sm text-[#737373]">
+                                {product.dimensions.length} × {product.dimensions.width} × {product.dimensions.heigth}
+                            </div>
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-4">
-                        {/* Edit Controls */}
-                        <div className="flex items-center gap-2">
-                            <Button
-                                onClick={handleUndo}
-                                disabled={historyIndex <= 0}
-                                variant="outline"
-                                size="sm"
-                                className="flex items-center gap-2"
-                            >
-                                <Undo className="w-4 h-4" />
-                                Undo (Ctrl+Z)
-                            </Button>
+                    <div className="flex items-center gap-2 sm:gap-4">
+                        {/* Edit Controls - Ascunse pe mobile în meniu */}
+                        {!isMobile && (
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    onClick={handleUndo}
+                                    disabled={historyIndex <= 0}
+                                    variant="outline"
+                                    size="sm"
+                                    className="hidden sm:flex items-center gap-2"
+                                >
+                                    <Undo className="w-4 h-4" />
+                                    <span className="hidden lg:inline">Undo (Ctrl+Z)</span>
+                                </Button>
 
-                            <Button
-                                onClick={handleDelete}
-                                disabled={!selectedId}
-                                variant="outline"
-                                size="sm"
-                                className="flex items-center gap-2 text-red-600"
-                            >
-                                <Trash2 className="w-4 h-4" />
-                                Delete
-                            </Button>
-                        </div>
+                                <Button
+                                    onClick={handleDelete}
+                                    disabled={!selectedId}
+                                    variant="outline"
+                                    size="sm"
+                                    className="hidden sm:flex items-center gap-2 text-red-600"
+                                >
+                                    <Trash2 className="w-4 h-4" />
+                                    <span className="hidden lg:inline">Delete</span>
+                                </Button>
+                            </div>
+                        )}
 
-                        <div className="flex items-center gap-2 bg-[#F5F2ED] px-4 py-2 rounded-lg">
-                            <Label htmlFor="3d-toggle" className="text-sm text-[#737373] cursor-pointer">
-                                Live 3D animation
+                        {/* 3D Toggle - Adaptiv */}
+                        <div className={`flex items-center gap-2 bg-[#F5F2ED] px-3 sm:px-4 py-1 sm:py-2 rounded-lg ${isMobile ? 'text-xs' : ''}`}>
+                            <Label htmlFor="3d-toggle" className={`text-[#737373] cursor-pointer ${isMobile ? 'text-xs' : 'text-sm'}`}>
+                                {isMobile ? '3D' : 'Live 3D'}
                             </Label>
                             <Switch
                                 id="3d-toggle"
                                 checked={show3DPreview}
                                 onCheckedChange={setShow3DPreview}
+                                className={isMobile ? 'scale-75' : ''}
                             />
                         </div>
+
 
                         <Button
                             onClick={handleClose}
@@ -386,102 +445,141 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
                     </div>
                 </div>
 
-                {/* Main Content */}
-                <div className="flex-1 flex overflow-hidden">
-                    {/* Left: Toolbar */}
-                    <div className="w-20 bg-[#F5F2ED] border-r border-beige p-2">
-                        <CustomizationToolbar
-                            selectedFace={selectedFace}
-                            onAddText={handleAddText}
-                            onAddLogo={handleAddLogo}
-                            onChangeBackground={handleChangeBackground}
-                            onChangeObjectColor={handleObjectColorChange}
-                            textElements={textElements}
-                            logoElements={logoElements}
-                            onEditText={handleEditText}
-                            onDeleteText={handleDeleteText}
-                            onDeleteLogo={handleDeleteLogo}
-                            activeView={activeView}
-                            setActiveView={setActiveView}
-                            editingText={editingText}
-                            setEditingText={setEditingText}
-                            onTextureSelect={handleTextureSelect} // Adaugă această linie
-                        />
+                {/* Mobile Menu Overlay */}
+                {isMobile && showMobileMenu && (
+                    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 lg:hidden" onClick={() => setShowMobileMenu(false)}>
+                        <div className="absolute top-16 left-4 right-4 bg-white rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
+                            <div className="space-y-3">
+                                <Button
+                                    onClick={handleUndo}
+                                    disabled={historyIndex <= 0}
+                                    variant="outline"
+                                    className="w-full justify-start"
+                                >
+                                    <Undo className="w-4 h-4 mr-2" />
+                                    Undo
+                                </Button>
+
+                                <Button
+                                    onClick={handleDelete}
+                                    disabled={!selectedId}
+                                    variant="outline"
+                                    className="w-full justify-start text-red-600"
+                                >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete Element
+                                </Button>
+
+
+
+                                <div className="border-t pt-3">
+                                    <div className="text-sm font-semibold text-brown mb-2">Quick Actions</div>
+                                    <Button
+                                        onClick={handleExportGLB}
+                                        disabled={isExporting || !threeScene}
+                                        variant="outline"
+                                        className="w-full justify-start mb-2"
+                                    >
+                                        {isExporting ? (
+                                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        ) : (
+                                            <Download className="w-4 h-4 mr-2" />
+                                        )}
+                                        Export GLB
+                                    </Button>
+
+                                    <Button
+                                        onClick={handleAddToCart}
+                                        className="w-full justify-start bg-brown hover:bg-terracotta text-white"
+                                    >
+                                        <ShoppingCart className="w-4 h-4 mr-2" />
+                                        Adaugă în Coș
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
                     </div>
+                )}
+
+                {/* Main Content */}
+                <div className={`flex-1 flex overflow-hidden ${getMainLayout()}`}>
+                    {/* Left: Toolbar */}
+                    {(
+                        <motion.div
+                            initial={{ width: 0 }}
+                            animate={{ width: isMobile ? "100%" : "80px" }}
+                            className={`bg-[#F5F2ED] border-r border-beige ${isMobile ? 'p-2 sticky top-0 z-50' : 'p-2 h-full'} ${getToolbarWidth()} ${isMobile ? 'flex-row overflow-x-auto' : 'flex-col'} flex ${isMobile ? 'items-center' : ''} shrink-0`}
+                            style={isMobile ? { minHeight: '80px' } : undefined}
+                        >
+                            <CustomizationToolbar
+                                selectedFace="front" // Simplificat pentru exemplu
+                                onAddText={handleAddText}
+                                onAddLogo={handleAddLogo}
+                                onChangeBackground={handleChangeBackground}
+                                onChangeObjectColor={handleObjectColorChange}
+                                textElements={textElements}
+                                logoElements={logoElements}
+                                onEditText={handleEditText}
+                                onDeleteText={handleDeleteText}
+                                onDeleteLogo={handleDeleteLogo}
+                                activeView={activeToolbarView}
+                                setActiveView={handleToolbarViewChange} // Folosește funcția unificată
+                                editingText={editingText}
+                                setEditingText={setEditingText}
+                                onTextureSelect={handleTextureSelect}
+                                isMobile={isMobile}
+                                onClosePanel={handleCloseToolbarView}
+                            />
+                        </motion.div>
+                    )}
 
                     {/* Center: 2D Editor */}
-                    <div className="flex-1 bg-[#E5E5E5] flex flex-col">
+                    <div className={`bg-[#E5E5E5] flex flex-col ${getEditorWidth()} transition-all duration-300`}>
                         {/* Editor Controls */}
-                        <div className="bg-white border-b border-beige px-4 py-2 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <span className="text-sm text-[#737373]">
+                        <div className="bg-white border-b border-beige px-3 sm:px-4 py-2 flex items-center justify-between">
+                            <div className="flex items-center gap-2 sm:gap-4">
+                                <span className="text-xs sm:text-sm text-[#737373]">
                                     Elemente: {textElements.length + logoElements.length}
                                 </span>
                                 {selectedId && (
-                                    <span className="text-sm text-brown font-semibold">
+                                    <span className="text-xs sm:text-sm text-brown font-semibold hidden sm:inline">
                                         Element selectat • Apasă Delete pentru a șterge
                                     </span>
                                 )}
                             </div>
 
-                            <div className="flex items-center gap-2">
-                                {/* <Button
-                                    onClick={handleExportPNG}
-                                    disabled={isExporting}
-                                    variant="outline"
-                                    size="sm"
-                                    className="flex items-center gap-2"
-                                >
-                                    {isExporting ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        <Download className="w-4 h-4" />
-                                    )}
-                                    Export PNG
-                                </Button> */}
+                            {/* Action Buttons - Doar pe desktop */}
+                            {!isMobile && (
+                                <div className="flex items-center gap-2">
+                                    <Button
+                                        onClick={handleExportGLB}
+                                        disabled={isExporting || !threeScene}
+                                        variant="outline"
+                                        size="sm"
+                                        className="flex items-center gap-2"
+                                    >
+                                        {isExporting ? (
+                                            <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : (
+                                            <Download className="w-4 h-4" />
+                                        )}
+                                        Export GLB
+                                    </Button>
 
-                                <Button
-                                    onClick={handleExportGLB}
-                                    disabled={isExporting || !threeScene}
-                                    variant="outline"
-                                    size="sm"
-                                    className="flex items-center gap-2"
-                                >
-                                    {isExporting ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        <Download className="w-4 h-4" />
-                                    )}
-                                    Export GLB
-                                </Button>
-
-                                {/* <Button
-                                    onClick={handleExportBoth}
-                                    disabled={isExporting || !threeScene}
-                                    variant="outline"
-                                    size="sm"
-                                    className="flex items-center gap-2 bg-blue-600 text-white hover:bg-blue-700"
-                                >
-                                    {isExporting ? (
-                                        <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                        <Download className="w-4 h-4" />
-                                    )}
-                                    Export Toate
-                                </Button> */}
-
-                                <Button
-                                    onClick={handleAddToCart}
-                                    className="bg-brown hover:bg-terracotta text-white flex items-center gap-2"
-                                >
-                                    <ShoppingCart className="w-4 h-4" />
-                                    Adaugă în Coș
-                                </Button>
-                            </div>
+                                    <Button
+                                        onClick={handleAddToCart}
+                                        className="bg-brown hover:bg-terracotta text-white flex items-center gap-2"
+                                        size="sm"
+                                    >
+                                        <ShoppingCart className="w-4 h-4" />
+                                        Adaugă în Coș
+                                    </Button>
+                                </div>
+                            )}
                         </div>
 
                         {/* 2D Editor */}
-                        <div className="flex-1 flex items-center justify-center p-8 overflow-auto">
+                        <div className="flex-1 flex items-center justify-center p-2 sm:p-4 md:p-8 overflow-auto">
                             <Product2DEditor
                                 onCanvasUpdate={handleCanvasUpdate}
                                 textElements={textElements}
@@ -490,64 +588,108 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
                                 selectedId={selectedId}
                                 onSelect={setSelectedId}
                                 stageRef={stageRef}
-                                onEditText={handleEditTextFrom2D} // Adaugă această linie
+                                onEditText={handleEditTextFrom2D}
                             />
                         </div>
                     </div>
 
                     {/* Right: 3D Preview */}
-                    {show3DPreview && (
+                    {(show3DPreview || (isMobile && persistent3D)) && (
                         <motion.div
                             initial={{ x: 400, opacity: 0 }}
                             animate={{ x: 0, opacity: 1 }}
                             exit={{ x: 400, opacity: 0 }}
-                            className={`bg-white border-l border-beige ${is3DExpanded ? 'w-[800px]' : 'w-[400px]'
-                                } transition-all duration-300 flex flex-col`}
+                            className={`bg-white border-l border-beige ${isMobile
+                                ? 'w-full h-80'
+                                : is3DExpanded
+                                    ? 'w-[600px] lg:w-[800px]'
+                                    : 'w-[300px] lg:w-[400px]'
+                                } transition-all duration-300 flex flex-col shrink-0`}
                         >
-                            <div className="p-4 border-b border-beige flex items-center justify-between">
+                            <div className="p-3 sm:p-4 border-b border-beige flex items-center justify-between">
                                 <div>
-                                    <h3 className="font-semibold text-brown">3D Preview</h3>
+                                    <h3 className="font-semibold text-brown text-sm sm:text-base">3D Preview</h3>
                                     <p className="text-xs text-[#737373]">Live rendering</p>
                                 </div>
-                                <Button
-                                    onClick={() => setIs3DExpanded(!is3DExpanded)}
-                                    variant="ghost"
-                                    size="icon"
-                                    className="text-[#737373]"
-                                >
-                                    {is3DExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                                </Button>
+                                {!isMobile && (
+                                    <Button
+                                        onClick={() => setIs3DExpanded(!is3DExpanded)}
+                                        variant="ghost"
+                                        size="icon"
+                                        className="text-[#737373]"
+                                    >
+                                        {is3DExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                                    </Button>
+                                )}
                             </div>
 
-                            <div className="flex-1 p-4 flex items-center justify-center bg-[#F5F2ED]">
+                            <div className="flex-1 p-2 sm:p-4 flex items-center justify-center bg-[#F5F2ED]">
                                 <ProductPreview3D
                                     canvas={canvas}
-                                    width={is3DExpanded ? 750 : 350}
-                                    height={is3DExpanded ? 550 : 450}
+                                    width={isMobile ? "100%" : is3DExpanded ? 750 : 350}
+                                    height={isMobile ? "100%" : is3DExpanded ? 550 : 450}
                                     Model={modelsMapper[product.image3D]}
                                     objectColor={objectColor}
                                     onSceneReady={setThreeScene}
-                                    textureUrl={selectedTexture} // Transmite textura către preview
+                                    textureUrl={selectedTexture}
                                 />
                             </div>
                         </motion.div>
                     )}
                 </div>
 
-                {/* Bottom Status Bar */}
-                <div className="bg-[#F5F2ED] border-t border-beige px-6 py-3 flex items-center justify-between text-xs text-[#737373]">
-                    <div className="flex items-center gap-4">
+                {/* Bottom Status Bar - Adaptiv */}
+                <div className="bg-[#F5F2ED] border-t border-beige px-3 sm:px-6 py-2 flex items-center justify-between text-xs text-[#737373]">
+                    <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
                         <span>Zoom: 100%</span>
-                        <span>•</span>
+                        <span className="hidden sm:inline">•</span>
                         <span>Elements: {textElements.length + logoElements.length}</span>
-                        <span>•</span>
-                        <span>Shortcuts: Ctrl+Z (Undo), Delete (Șterge)</span>
+                        {!isMobile && (
+                            <>
+                                <span>•</span>
+                                <span>Shortcuts: Ctrl+Z (Undo), Delete (Șterge)</span>
+                            </>
+                        )}
                     </div>
-                    <div>
-                        {threeScene ? '💾 GLB Ready' : '⏳ Loading 3D...'}
-                        • {stageRef.current ? '🎨 Editor Ready' : '⏳ Loading Editor...'}
+                    <div className="text-right">
+                        <div className="hidden sm:block">
+                            {threeScene ? '💾 GLB Ready' : '⏳ Loading 3D...'}
+                            • {stageRef.current ? '🎨 Editor Ready' : '⏳ Loading Editor...'}
+                        </div>
+                        <div className="sm:hidden text-xs">
+                            {threeScene ? '💾 Ready' : '⏳ Loading...'}
+                        </div>
                     </div>
                 </div>
+
+                {/* Mobile Action Bar */}
+                {isMobile && (
+                    <div className="bg-white border-t border-beige p-3 flex items-center justify-between sm:hidden">
+                        <Button
+                            onClick={handleExportGLB}
+                            disabled={isExporting || !threeScene}
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center gap-2 flex-1 mx-1"
+                        >
+                            {isExporting ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                                <Download className="w-4 h-4" />
+                            )}
+                            Export
+                        </Button>
+
+                        <Button
+                            onClick={handleAddToCart}
+                            className="bg-brown hover:bg-terracotta text-white flex items-center gap-2 flex-1 mx-1"
+                            size="sm"
+                        >
+                            <ShoppingCart className="w-4 h-4" />
+                            Coș
+                        </Button>
+                    </div>
+                )}
             </motion.div>
         </AnimatePresence>
     );
