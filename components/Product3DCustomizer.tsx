@@ -447,7 +447,7 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
 
                 {/* Mobile Menu Overlay */}
                 {isMobile && showMobileMenu && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 lg:hidden" onClick={() => setShowMobileMenu(false)}>
+                    <div className="fixed inset-0 z-1000 bg-black bg-opacity-50 lg:hidden" onClick={() => setShowMobileMenu(false)}>
                         <div className="absolute top-16 left-4 right-4 bg-white rounded-lg shadow-xl p-4" onClick={(e) => e.stopPropagation()}>
                             <div className="space-y-3">
                                 <Button
@@ -508,7 +508,7 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
                         <motion.div
                             initial={{ width: 0 }}
                             animate={{ width: isMobile ? "100%" : "80px" }}
-                            className={`bg-[#F5F2ED] border-r border-beige ${isMobile ? 'p-2 sticky top-0 z-50' : 'p-2 h-full'} ${getToolbarWidth()} ${isMobile ? 'flex-row overflow-x-auto' : 'flex-col'} flex ${isMobile ? 'items-center' : ''} shrink-0`}
+                            className={`bg-[#F5F2ED] border-r border-beige ${isMobile ? 'p-2  top-0 ' : 'p-2 h-full'} ${getToolbarWidth()} ${isMobile ? 'flex-row ' : 'flex-col'} flex ${isMobile ? 'items-center' : ''} shrink-0`}
                             style={isMobile ? { minHeight: '80px' } : undefined}
                         >
                             <CustomizationToolbar
