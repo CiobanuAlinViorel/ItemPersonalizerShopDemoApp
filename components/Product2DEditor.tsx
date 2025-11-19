@@ -259,7 +259,7 @@ export const Product2DEditor = ({
                             <Transformer
                                 ref={transformerRef}
                                 boundBoxFunc={(oldBox, newBox) => {
-                                    // Limitează dimensiunile minime
+                                    // Limitează dimensiun
                                     if (newBox.width < 5 || newBox.height < 5) {
                                         return oldBox;
                                     }

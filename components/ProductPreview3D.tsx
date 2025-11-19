@@ -1,3 +1,4 @@
+'use client'
 import { Environment, OrbitControls } from "@react-three/drei";
 import { Canvas } from "@react-three/fiber";
 import { SceneExporter } from "./SceneExporter";
@@ -5,7 +6,7 @@ import * as THREE from 'three';
 import { useEffect, useRef, useState } from 'react';
 
 interface ProductPreview3DProps {
-    canvas: HTMLCanvasElement | null;
+    canvas?: HTMLCanvasElement | null;
     width?: number | string;
     height?: number | string;
     Model: React.FC<any>;
@@ -155,7 +156,7 @@ export const ProductPreview3D = ({
                 <OrbitControls
                     enablePan={!isMobile}
                     enableZoom={true}
-                    maxDistance={isMobile ? 8 : 12}
+                    maxDistance={isMobile ? 8 : 1200}
                     minDistance={isMobile ? 2 : 3}
                     enableDamping={true}
                     dampingFactor={0.05}

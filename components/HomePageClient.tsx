@@ -8,7 +8,7 @@ import Product3DCustomizer from "./Product3DCustomizer";
 import Image from "next/image";
 import { Product } from "@/lib/types/Product";
 
-const Products: Product[] = [
+export const prdts: Product[] = [
     {
         id: 1,
         name: "Cutie Personalizabilă Premium",
@@ -31,6 +31,21 @@ const Products: Product[] = [
         price: 49.99,
         image: "/images/cofee.jpeg",
         image3D: "/models/cofee.glb",
+        dimensions: {
+            width: "20cm",
+            length: "15cm",
+            heigth: "10cm"
+        },
+        background: "#FFFFFF",
+        texture: ""
+    },
+    {
+        id: 3,
+        name: "Puzzle casa traditionala",
+        description: "Puzzle casa traditionala",
+        price: 49.99,
+        image: "/images/house.jpg",
+        image3D: "/models/house_animations.glb",
         dimensions: {
             width: "20cm",
             length: "15cm",
@@ -70,7 +85,7 @@ export const HomePageClient = () => {
             </motion.div>
 
             <div className="space-y-8 w-full max-w-4xl">
-                {Products.map((product) => (
+                {prdts.map((product) => (
                     <div key={product.id}>
                         <Card className="w-full shadow-2xl rounded-2xl bg-white border-2 border-beige">
                             <CardContent className="p-8">

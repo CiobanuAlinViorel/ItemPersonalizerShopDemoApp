@@ -66,9 +66,33 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
     // State-uri pentru toolbar și editare - UNIFICATE
     const [activeToolbarView, setActiveToolbarView] = useState<ToolbarView>(null);
     const [editingText, setEditingText] = useState<TextElement | null>(null);
+    const [previewSize, setPreviewSize] = useState({ width: 350, height: 450 });
 
     // Store
     const { addItem } = useShoppingCartStore();
+
+    useEffect(() => {
+        const updatePreviewSize = () => {
+            if (isMobile) {
+                setPreviewSize({ width: window.innerWidth - 32, height: 320 });
+            } else if (is3DExpanded) {
+                // Pentru modul expandat, folosim 80% din inaltimea ferestrei
+                const width = Math.min(600, window.innerWidth * 0.8);
+                const height = Math.min(400, window.innerHeight * 0.8);
+                setPreviewSize({ width, height });
+            } else {
+                // Pentru modul normal, dimensiuni proportionale
+                const width = 400;
+                const height = 500;
+                setPreviewSize({ width, height });
+            }
+        };
+
+        updatePreviewSize();
+        window.addEventListener('resize', updatePreviewSize);
+
+        return () => window.removeEventListener('resize', updatePreviewSize);
+    }, [isMobile, is3DExpanded]);
 
     // Detectare dispozitiv și layout adaptiv
     useEffect(() => {
@@ -593,7 +617,6 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
                         </div>
                     </div>
 
-                    {/* Right: 3D Preview */}
                     {(show3DPreview || (isMobile && persistent3D)) && (
                         <motion.div
                             initial={{ x: 400, opacity: 0 }}
@@ -602,37 +625,51 @@ export default function Product3DCustomizer({ product, onClose }: Product3DCusto
                             className={`bg-white border-l border-beige ${isMobile
                                 ? 'w-full h-80'
                                 : is3DExpanded
-                                    ? 'w-[600px] lg:w-[800px]'
-                                    : 'w-[300px] lg:w-[400px]'
+                                    ? 'w-full max-w-[90vw]' // Modificat pentru a ocupa mai mult spatiu
+                                    : 'w-[400px]' // Modificat pentru a fi mai larg
                                 } transition-all duration-300 flex flex-col shrink-0`}
                         >
                             <div className="p-3 sm:p-4 border-b border-beige flex items-center justify-between">
                                 <div>
-                                    <h3 className="font-semibold text-brown text-sm sm:text-base">3D Preview</h3>
+                                    <h3 className="font-semibold text-brown text-sm sm:text-base">
+                                        3D Preview {is3DExpanded && '(Expanded)'}
+                                    </h3>
                                     <p className="text-xs text-[#737373]">Live rendering</p>
                                 </div>
                                 {!isMobile && (
-                                    <Button
-                                        onClick={() => setIs3DExpanded(!is3DExpanded)}
-                                        variant="ghost"
-                                        size="icon"
-                                        className="text-[#737373]"
-                                    >
-                                        {is3DExpanded ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-xs text-[#737373] hidden sm:block">
+                                            {previewSize.width}×{previewSize.height}
+                                        </span>
+                                        <Button
+                                            onClick={() => setIs3DExpanded(!is3DExpanded)}
+                                            variant="ghost"
+                                            size="icon"
+                                            className="text-[#737373]"
+                                        >
+                                            {is3DExpanded ? (
+                                                <Minimize2 className="w-4 h-4" />
+                                            ) : (
+                                                <Maximize2 className="w-4 h-4" />
+                                            )}
+                                        </Button>
+                                    </div>
                                 )}
                             </div>
 
-                            <div className="flex-1 p-2 sm:p-4 flex items-center justify-center bg-[#F5F2ED]">
-                                <ProductPreview3D
-                                    canvas={canvas}
-                                    width={isMobile ? "100%" : is3DExpanded ? 750 : 350}
-                                    height={isMobile ? "100%" : is3DExpanded ? 550 : 450}
-                                    Model={modelsMapper[product.image3D]}
-                                    objectColor={objectColor}
-                                    onSceneReady={setThreeScene}
-                                    textureUrl={selectedTexture}
-                                />
+                            <div className="flex-1 p-2 sm:p-4 flex items-center justify-center bg-[#F5F2ED] overflow-hidden">
+                                <div className={`w-full h-full flex items-center justify-center ${is3DExpanded ? 'max-h-[80vh]' : ''
+                                    }`}>
+                                    <ProductPreview3D
+                                        canvas={canvas}
+                                        width={previewSize.width}
+                                        height={previewSize.height}
+                                        Model={modelsMapper[product.image3D]}
+                                        objectColor={objectColor}
+                                        onSceneReady={setThreeScene}
+                                        textureUrl={selectedTexture}
+                                    />
+                                </div>
                             </div>
                         </motion.div>
                     )}
