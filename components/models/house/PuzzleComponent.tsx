@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import React, { useEffect, useState, useCallback, useMemo, useRef, lazy } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { usePuzzleStore } from '@/lib/stores/PuzzleStore';
 import { PuzzlePiece, puzzles } from '@/lib/collection/puzzle';
-import StepsListComponent from './StepsListComponent';
-import PuzzleFinalResult from './PuzzleFinalResult';
+const StepsListComponent = lazy(() => import('./StepsListComponent'));
+const PuzzleFinalResult = lazy(() => import('./PuzzleFinalResult'));
 
 export interface ParsedSVGImage {
     piece: PuzzlePiece;

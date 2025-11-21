@@ -1,6 +1,6 @@
 import { IPuzzle, IPuzzleSteps, PuzzlePiece } from '@/lib/collection/puzzle'
 import { CheckCircle, Circle, CircleDot, PartyPopper, RotateCcw, Home } from 'lucide-react'
-import { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react'
+import { useState, useMemo, useCallback, memo, useEffect, useRef, lazy } from 'react'
 import {
     Accordion,
     AccordionContent,
@@ -14,11 +14,13 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog"
-import PuzzleResultPreviewer from './PuzzleResultPreviewer'
-import PuzzleTablePreview from './PuzzleTablePreview'
+
 import { ParsedSVGImage } from './PuzzleComponent'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
+const PuzzleResultPreviewer = lazy(() => import('./PuzzleResultPreviewer'));
+const PuzzleTablePreview = lazy(() => import('./PuzzleTablePreview'));
+
 
 
 type StepListProps = {

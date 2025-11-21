@@ -15,14 +15,13 @@ type IPieceView = {
     isVisible?: boolean
 }
 
-// Helper function pentru a obține devicePixelRatio în mod safe
 const getSafeDevicePixelRatio = (maxRatio: number = 2): number => {
     if (typeof window === 'undefined') return 1;
     return Math.min(window.devicePixelRatio, maxRatio);
 };
 
-// Component pentru managementul calității
-const QualityManager = ({
+// 🔥 OPTIMIZED: Quality Manager
+const QualityManager = React.memo(({
     quality,
     isMobile
 }: {
@@ -32,34 +31,44 @@ const QualityManager = ({
     const { gl } = useThree();
 
     useEffect(() => {
+        let pixelRatio = 1;
         switch (quality) {
             case 'high':
-                gl.setPixelRatio(getSafeDevicePixelRatio(2));
+                pixelRatio = getSafeDevicePixelRatio(1.5);
                 break;
             case 'medium':
-                gl.setPixelRatio(getSafeDevicePixelRatio(1.5));
+                pixelRatio = getSafeDevicePixelRatio(1.2);
                 break;
             case 'low':
             default:
-                gl.setPixelRatio(getSafeDevicePixelRatio(isMobile ? 1 : 1.2));
+                pixelRatio = getSafeDevicePixelRatio(1);
                 break;
         }
+
+        gl.setPixelRatio(pixelRatio);
     }, [quality, isMobile, gl]);
 
     return null;
-};
+});
 
-// Componentă simplă pentru environment
-const SimpleEnvironment = () => {
+QualityManager.displayName = 'QualityManager';
+
+// 🔥 OPTIMIZED: Simple Environment
+const SimpleEnvironment = React.memo(() => {
     return (
         <>
             <color attach="background" args={["#F8FAFC"]} />
-            <Environment preset="apartment" background={false} environmentIntensity={0.6} />
+            <Environment
+                preset="apartment"
+                background={false}
+                environmentIntensity={0.5}
+            />
         </>
     );
-};
+});
 
-// Memoized component to prevent unnecessary re-renders
+SimpleEnvironment.displayName = 'SimpleEnvironment';
+
 const PieceView = React.memo(({
     piece,
     isMobile,
@@ -71,48 +80,75 @@ const PieceView = React.memo(({
     const [model3D, setModel3D] = useState<any | null>(null);
     const [isLoading, setIsLoading] = useState(true);
     const [loadError, setLoadError] = useState<string | null>(null);
+    const [shouldRender, setShouldRender] = useState(false);
 
-    const [adaptiveQuality, setAdaptiveQuality] = useState<'low' | 'medium' | 'high'>('medium');
+    const [adaptiveQuality, setAdaptiveQuality] = useState<'low' | 'medium' | 'high'>('low');
 
-    // Calitate adaptivă bazată pe context
+    // 🔥 NEW: Intersection Observer pentru lazy loading
     useEffect(() => {
-        let quality: 'low' | 'medium' | 'high' = 'medium';
+        if (!containerRef.current) return;
 
-        if (priority === 'performance') {
+        const observer = new IntersectionObserver(
+            (entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting && !shouldRender) {
+                        setShouldRender(true);
+                    }
+                });
+            },
+            {
+                threshold: 0.1,
+                rootMargin: '50px'
+            }
+        );
+
+        observer.observe(containerRef.current);
+
+        return () => observer.disconnect();
+    }, [shouldRender]);
+
+    // 🔥 OPTIMIZED: Calitate adaptivă
+    useEffect(() => {
+        if (!isVisible || !shouldRender) {
+            setAdaptiveQuality('low');
+            return;
+        }
+
+        let quality: 'low' | 'medium' | 'high' = 'low';
+
+        if (priority === 'performance' || isMobile) {
             quality = 'low';
         } else if (priority === 'quality') {
-            quality = 'high';
+            quality = 'medium';
         } else {
-            quality = isMobile ? 'medium' : 'high';
+            quality = isMobile ? 'low' : 'medium';
         }
 
         setAdaptiveQuality(quality);
-    }, [isVisible, isMobile, priority]);
+    }, [isVisible, isMobile, priority, shouldRender]);
 
-    // Configurație calitate
     const qualityConfig = useMemo(() => {
         const configs = {
             high: {
-                antialias: true,
-                pixelRatio: getSafeDevicePixelRatio(2),
-                toneMappingExposure: 1.0
-            },
-            medium: {
-                antialias: true,
+                antialias: false,
                 pixelRatio: getSafeDevicePixelRatio(1.5),
                 toneMappingExposure: 0.9
+            },
+            medium: {
+                antialias: false,
+                pixelRatio: getSafeDevicePixelRatio(1.2),
+                toneMappingExposure: 0.8
             },
             low: {
                 antialias: false,
                 pixelRatio: getSafeDevicePixelRatio(1),
-                toneMappingExposure: 0.8
+                toneMappingExposure: 0.7
             }
         };
 
         return configs[adaptiveQuality];
     }, [adaptiveQuality]);
 
-    // Configurație cameră
     const cameraConfig = useMemo(() => ({
         position: [3, 2, 4] as [number, number, number],
         fov: 50,
@@ -120,54 +156,84 @@ const PieceView = React.memo(({
         far: 100
     }), []);
 
-    // Configurație scală și poziție
     const scale = useMemo(() => 0.3, []);
     const position = useMemo(() => [0, 0, 0] as [number, number, number], []);
 
-    // Funcție de încărcare model
+    // 🔥 OPTIMIZED: Loading cu abort controller
+    const abortControllerRef = useRef<AbortController | null>(null);
+
     const load3DComponent = useCallback(async (component: string) => {
-        if (!isVisible) return;
+        if (!isVisible || !shouldRender) return;
+
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+        }
+
+        abortControllerRef.current = new AbortController();
+        const signal = abortControllerRef.current.signal;
 
         setIsLoading(true);
         setLoadError(null);
 
         try {
             const model = await loadGLBOnCenter(component);
+
+            if (signal.aborted) return;
+
             if (model) {
                 setModel3D(model);
-
-                // Debug: verifică materialele
-                model.traverse((child) => {
-                    if (child instanceof THREE.Mesh) {
-                        console.log(`Mesh: ${child.name}, Material:`, child.material);
-                    }
-                });
             }
         } catch (error) {
-            console.error('Error loading 3D model:', error);
-            setLoadError(`Failed to load model: ${error instanceof Error ? error.message : 'Unknown error'}`);
+            if (error instanceof Error && error.name !== 'AbortError') {
+                console.error('Error loading 3D model:', error);
+                setLoadError(`Failed to load model`);
+            }
         } finally {
-            setIsLoading(false);
+            if (!signal.aborted) {
+                setIsLoading(false);
+            }
         }
-    }, [isVisible]);
+    }, [isVisible, shouldRender]);
 
-    // Încarcă modelul când se schimbă piesa sau vizibilitatea
     useEffect(() => {
-        if (piece.glb && isVisible) {
+        if (piece.glb && isVisible && shouldRender) {
             load3DComponent(piece.glb);
         } else {
             setModel3D(null);
             setIsLoading(false);
         }
-    }, [piece.glb, isVisible, load3DComponent]);
+    }, [piece.glb, isVisible, shouldRender, load3DComponent]);
 
-    // Configurație scenă
+    // Cleanup
+    useEffect(() => {
+        return () => {
+            if (abortControllerRef.current) {
+                abortControllerRef.current.abort();
+            }
+
+            if (model3D) {
+                model3D.traverse((child: any) => {
+                    if (child instanceof THREE.Mesh) {
+                        child.geometry?.dispose();
+                        if (Array.isArray(child.material)) {
+                            child.material.forEach(material => material.dispose());
+                        } else {
+                            child.material?.dispose();
+                        }
+                    }
+                });
+            }
+        };
+    }, [model3D]);
+
     const sceneConfig = useMemo(() => ({
         gl: {
             antialias: qualityConfig.antialias,
             alpha: true,
-            powerPreference: "high-performance" as const,
+            powerPreference: "default" as const,
+            failIfMajorPerformanceCaveat: false
         },
+        frameloop: 'demand' as const,
         onCreated: ({ gl }: { gl: THREE.WebGLRenderer }) => {
             gl.setPixelRatio(qualityConfig.pixelRatio);
             gl.outputColorSpace = THREE.SRGBColorSpace;
@@ -176,53 +242,31 @@ const PieceView = React.memo(({
         }
     }), [qualityConfig]);
 
-    // Configurație controale
     const controlsConfig = useMemo(() => ({
-        enablePan: !isMobile,
+        enablePan: false,
         enableZoom: true,
         maxDistance: 8,
         minDistance: 1,
         enableDamping: true,
-        dampingFactor: 0.05,
+        dampingFactor: 0.08,
         rotateSpeed: 2,
-        zoomSpeed: 1,
-    }), [isMobile]);
+        zoomSpeed: 0.8,
+        makeDefault: true
+    }), []);
 
-    // Grup model
     const modelGroup = useMemo(() => {
-        if (!model3D || !isVisible) return null;
+        if (!model3D || !isVisible || !shouldRender) return null;
 
         return (
             <group position={position} scale={scale}>
                 <primitive object={model3D} />
             </group>
         );
-    }, [model3D, position, scale, isVisible]);
+    }, [model3D, position, scale, isVisible, shouldRender]);
 
-    // Cleanup
-    useEffect(() => {
-        return () => {
-            if (model3D) {
-                model3D.traverse((child) => {
-                    if (child instanceof THREE.Mesh) {
-                        child.geometry.dispose();
-                        if (Array.isArray(child.material)) {
-                            child.material.forEach(material => material.dispose());
-                        } else {
-                            child.material.dispose();
-                        }
-                    }
-                });
-            }
-        };
-    }, [model3D]);
-
-    // Dacă nu este vizibil
     if (!isVisible) {
         return (
-            <div
-                className="relative w-[100vh] h-screen border border-gray-300 rounded-lg bg-gray-100 flex items-center justify-center my-4"
-            >
+            <div className="relative w-full h-[50vh] border border-gray-300 rounded-lg bg-gray-100 flex items-center justify-center">
                 <p className="text-gray-500 text-sm">Preview 3D indisponibil</p>
             </div>
         );
@@ -231,9 +275,8 @@ const PieceView = React.memo(({
     return (
         <div
             ref={containerRef}
-            className={`relative ${isMobile ? "w-[100%]" : "w-[100%]"} h-[50vh] border border-gray-300 rounded-lg bg-white my-4 overflow-hidden`}
+            className={`relative w-full h-[50vh] border border-gray-300 rounded-lg bg-white my-4 overflow-hidden`}
         >
-            {/* Loading indicator */}
             {(isLoading || loadError) && (
                 <div
                     className={`absolute inset-0 flex items-center justify-center z-10 backdrop-blur-sm ${loadError ? 'bg-red-50' : 'bg-white/90'
@@ -256,44 +299,31 @@ const PieceView = React.memo(({
                 </div>
             )}
 
-            {/* Canvas 3D */}
-            <Canvas
-                camera={cameraConfig}
-                className="w-full h-full"
-                {...sceneConfig}
-                frameloop="demand"
-            >
-                {/* Quality Manager */}
-                <QualityManager quality={adaptiveQuality} isMobile={isMobile} />
+            {shouldRender && (
+                <Canvas
+                    camera={cameraConfig}
+                    className="w-full h-full"
+                    {...sceneConfig}
+                >
+                    <QualityManager quality={adaptiveQuality} isMobile={isMobile} />
 
-                {/* Environment */}
-                <SimpleEnvironment />
+                    <SimpleEnvironment />
 
-                {/* Lighting */}
-                <ambientLight intensity={0.7} />
-                <directionalLight
-                    position={[5, 10, 5]}
-                    intensity={1.0}
-                    castShadow={false}
-                />
-                <pointLight
-                    position={[-5, 5, -5]}
-                    intensity={0.5}
-                />
+                    <ambientLight intensity={0.8} />
+                    <directionalLight
+                        position={[5, 10, 5]}
+                        intensity={0.9}
+                    />
 
-                {/* Model */}
-                {modelGroup}
+                    {modelGroup}
 
-                {/* Scene Export pentru debugging */}
-                {process.env.NODE_ENV === 'development' && !threeScene && (
-                    <SceneExporter onSceneReady={setThreeScene} />
-                )}
+                    {process.env.NODE_ENV === 'development' && !threeScene && (
+                        <SceneExporter onSceneReady={setThreeScene} />
+                    )}
 
-                {/* Controls */}
-                <OrbitControls {...controlsConfig} />
-            </Canvas>
-
-
+                    <OrbitControls {...controlsConfig} />
+                </Canvas>
+            )}
         </div>
     );
 });
