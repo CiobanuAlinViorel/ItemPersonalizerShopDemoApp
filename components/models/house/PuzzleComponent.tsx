@@ -2,12 +2,8 @@
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Separator } from '../../ui/separator';
-import PuzzleTablePreview from './PuzzleTablePreview';
 import { usePuzzleStore } from '@/lib/stores/PuzzleStore';
 import { PuzzlePiece, puzzles } from '@/lib/collection/puzzle';
-import PuzzleResultPreviewer from './PuzzleResultPreviewer';
-import PuzzleControls from './PuzzleControls';
 import StepsListComponent from './StepsListComponent';
 import PuzzleFinalResult from './PuzzleFinalResult';
 
