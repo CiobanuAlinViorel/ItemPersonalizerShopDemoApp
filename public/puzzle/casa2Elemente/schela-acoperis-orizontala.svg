@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="210mm"
+   height="297mm"
+   viewBox="0 0 210 297"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   sodipodi:docname="schela-acoperis-orizontala.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#505050"
+     bordercolor="#eeeeee"
+     borderopacity="1"
+     inkscape:showpageshadow="0"
+     inkscape:pageopacity="0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#505050"
+     inkscape:document-units="mm"
+     inkscape:zoom="0.74208053"
+     inkscape:cx="396.8572"
+     inkscape:cy="561.25984"
+     inkscape:window-width="1920"
+     inkscape:window-height="1051"
+     inkscape:window-x="-9"
+     inkscape:window-y="-9"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <path
+       d="m 94.26594,152.8151 h 9.52483 l -6.2e-4,-6.84328 0.13418,-3.3215 -0.1349,-2.98583 -5e-4,-5.50616 4.7179,1.7e-4 v 5.50045 l -0.13454,2.99422 0.13454,3.28202 v 6.87923 l 11.66113,1.7e-4"
+       style="fill:none;stroke:#000000;stroke-width:0.128602;stroke-linecap:butt;stroke-linejoin:bevel;stroke-dasharray:none"
+       id="path286" />
+    <path
+       d="m 120.70602,152.81459 h 9.17103 l 15.22902,1.8e-4 9.08547,-7.13271 m 7.41804,-5.82449 27.47851,-21.57593 -32.26975,-5.7e-4"
+       style="fill:none;stroke:#000000;stroke-width:0.128602;stroke-linecap:butt;stroke-linejoin:bevel;stroke-dasharray:none"
+       id="path287" />
+    <path
+       d="M 105.74537,118.28069 H 64.438693"
+       style="fill:none;stroke:#000000;stroke-width:0.128602;stroke-linecap:butt;stroke-linejoin:bevel;stroke-dasharray:none"
+       id="path288" />
+    <path
+       d="M 64.438693,118.28069 H 40.215527 23.199475 l 27.450917,21.55862 m 7.419822,5.82276 9.11065,7.15252 26.546981,3.4e-4"
+       style="fill:none;stroke:#000000;stroke-width:0.128602;stroke-linecap:butt;stroke-linejoin:bevel;stroke-dasharray:none"
+       id="path290" />
+    <path
+       d="m 156.81834,118.28102 -50.5348,-3.3e-4"
+       style="fill:none;stroke:#000000;stroke-width:0.128602;stroke-linecap:butt;stroke-linejoin:bevel;stroke-dasharray:none"
+       id="path291" />
+    <path
+       d="m 154.48631,145.97585 0.56292,0.61913 1.12222,0.97508 0.11445,0.0762 0.18872,0.11114 0.21307,0.0421 0.48939,0.10908 0.67366,3.3e-4 0.55892,-0.0424 0.42458,-0.0613 0.43958,-0.12575 0.83541,-0.58131 -5.45353,-5.60369 2.38374,-1.8717 m 4.86484,0.52844 0.62727,0.56859 0.96009,1.10236 0.0719,0.10972 0.10226,0.17907 0.0215,0.1923 0.064,0.44305 -0.08,0.59208 -0.11409,0.48609 -0.11948,0.36583 -0.19352,0.3713 -0.75168,0.66483 -5.45352,-5.60367"
+       style="fill:none;stroke:#000000;stroke-width:0.128602;stroke-linecap:butt;stroke-linejoin:bevel;stroke-dasharray:none"
+       id="path313" />
+    <path
+       d="m 57.755764,145.97585 -0.562976,0.61913 -1.122166,0.97508 -0.11445,0.0762 -0.188717,0.11114 -0.213078,0.0421 -0.489372,0.10908 -0.673676,3.3e-4 -0.558922,-0.0424 -0.424577,-0.0613 -0.439628,-0.12575 -0.835359,-0.58131 5.596425,-5.63505 -1.319476,-1.03604 -1.064259,-0.83567 m -5.007797,0.55981 -0.627217,0.56859 -0.960086,1.10236 -0.0719,0.10972 -0.10227,0.17907 -0.02183,0.1923 -0.06404,0.44305 0.07994,0.59208 0.114163,0.48609 0.119419,0.36583 0.193522,0.3713 0.751623,0.66483 5.596479,-5.63505"
+       style="fill:none;stroke:#000000;stroke-width:0.128602;stroke-linecap:butt;stroke-linejoin:bevel;stroke-dasharray:none"
+       id="path316" />
+  </g>
+</svg>

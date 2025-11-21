@@ -1,6 +1,6 @@
 import { IPuzzle, IPuzzleSteps, PuzzlePiece } from '@/lib/collection/puzzle'
-import { CheckCircle, Circle, CircleDot, PartyPopper, RotateCcw, Home, ChevronDown, ChevronUp } from 'lucide-react'
-import React, { useState, useMemo, useCallback, memo, useEffect } from 'react'
+import { CheckCircle, Circle, CircleDot, PartyPopper, RotateCcw, Home } from 'lucide-react'
+import { useState, useMemo, useCallback, memo, useEffect, useRef } from 'react'
 import {
     Accordion,
     AccordionContent,
@@ -51,7 +51,6 @@ const StepItem = memo(({
     stepSvgImages,
     puzzle,
     onUsePieces,
-    onReverseStep,
     onStepChange,
     previewKey,
     setShowCongrats
@@ -64,33 +63,42 @@ const StepItem = memo(({
     stepSvgImages: ParsedSVGImage[],
     puzzle: IPuzzle,
     onUsePieces: (pieces: PuzzlePiece[]) => void,
-    onReverseStep: () => void,
-    onStepChange: (newStep: number, oldStep: number) => void
+    onStepChange: (newStep: number) => void
     previewKey: number,
     setShowCongrats: (value: boolean) => void;
 }) => {
     const handleFinalizeStep = useCallback(() => {
-        if (step.stepNumber < puzzle.steps.length - 1) {
+        if (step.stepNumber < puzzle.steps.length) {
             const piecesToUse = stepUnusedPieces.filter(p => p.step === step.stepNumber);
             if (piecesToUse.length > 0) {
                 onUsePieces(piecesToUse);
             }
-            onStepChange(step.stepNumber + 1, step.stepNumber);
+            onStepChange(step.stepNumber + 1);
+        } else {
+            // Este ultimul pas
+            const piecesToUse = stepUnusedPieces.filter(p => p.step === step.stepNumber);
+            if (piecesToUse.length > 0) {
+                onUsePieces(piecesToUse);
+                // Așteaptă să se actualizeze starea înainte de a arăta congratulațiile
+                setTimeout(() => {
+                    setShowCongrats(true);
+                }, 300);
+            } else {
+                setShowCongrats(true);
+            }
         }
-        else {
-            setShowCongrats(true);
-        }
-    }, [stepUnusedPieces, step.stepNumber, onUsePieces, onStepChange]);
+    }, [stepUnusedPieces, step.stepNumber, onUsePieces, onStepChange, puzzle.steps.length, setShowCongrats]);
 
     const handleGoBack = useCallback(() => {
-        onReverseStep();
-        onStepChange(step.stepNumber - 1, step.stepNumber);
-    }, [onReverseStep, onStepChange, step.stepNumber]);
+        if (step.stepNumber > 1) {
+            onStepChange(step.stepNumber - 1);
+        }
+    }, [onStepChange, step.stepNumber]);
 
     const shouldRender3DPreview = (!isMobile || state === StepState.CURRENT);
     const shouldRenderTablePreview = stepSvgImages.length > 0 && (!isMobile || state === StepState.CURRENT);
-    const usedPiecesCount = stepUsedPieces.filter(v => v.isMobile === isMobile).length;
-    const unusedPiecesCount = stepUnusedPieces.filter(v => v.isMobile === isMobile).length;
+    const usedPiecesCount = stepUsedPieces.length;
+    const unusedPiecesCount = stepUnusedPieces.length;
 
     return (
         <AccordionItem
@@ -106,7 +114,7 @@ const StepItem = memo(({
                 <div className="flex items-start gap-3 md:gap-4 w-full">
                     {/* Step Number Indicator */}
                     <div className={`shrink-0 w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center transition-all duration-300 ${state === StepState.CURRENT
-                        ? 'bg-gradient-to-br from-terracotta to-orange-500 text-white shadow-lg scale-105'
+                        ? 'bg-gradient-to-br from-terracotta to-terracotta-dark text-white shadow-lg scale-105'
                         : state === StepState.DONE
                             ? 'bg-gradient-to-br from-green-500 to-emerald-500 text-white shadow-md'
                             : 'bg-gradient-to-br from-gray-300 to-gray-400 text-gray-600'
@@ -123,14 +131,7 @@ const StepItem = memo(({
                                     ? 'text-green-900'
                                     : 'text-gray-700'
                                 }`}>
-                                Pasul {step.stepNumber}: <span className={`text-sm md:text-base leading-relaxed pr-2 ${state === StepState.CURRENT
-                                    ? 'text-brown'
-                                    : state === StepState.DONE
-                                        ? 'text-green-700'
-                                        : 'text-gray-600'
-                                    }`}>
-
-                                </span>
+                                Pasul {step.stepNumber}
                             </span>
                             <div className={`transition-all duration-300 mr-2 ${state === StepState.CURRENT ? 'scale-110 text-terracotta' : 'scale-100'
                                 }`}>
@@ -154,21 +155,17 @@ const StepItem = memo(({
                         </p>
 
                         {/* Mobile quick stats */}
-
                         <div className="flex gap-3 pt-1">
                             <div className="flex items-center gap-1 text-xs">
                                 <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                                <span className="text-emerald-700 font-medium">{usedPiecesCount} plasate</span>
+                                <span className="text-emerald-700 font-medium"> {usedPiecesCount === 1 ? usedPiecesCount + " plasată" : usedPiecesCount + " plasate"} </span>
                             </div>
                             <div className="flex items-center gap-1 text-xs">
                                 <div className="w-2 h-2 rounded-full bg-brown"></div>
-                                <span className="text-brown-dark font-medium">{unusedPiecesCount} rămase</span>
+                                <span className="text-brown-dark font-medium"> {unusedPiecesCount === 1 ? unusedPiecesCount + " disponibilă" : unusedPiecesCount + " disponibile"} </span>
                             </div>
                         </div>
-
                     </div>
-
-
                 </div>
             </AccordionTrigger>
 
@@ -218,15 +215,13 @@ const StepItem = memo(({
                         )}
                     </div>
 
-
-
                     {/* Action Buttons */}
                     <div className='flex justify-center gap-3 items-center flex-wrap'>
-                        {step.stepNumber < puzzle.steps.length - 1 ? (
+                        {step.stepNumber < puzzle.steps.length ? (
                             <Button
                                 onClick={handleFinalizeStep}
-                                className="min-w-[140px] md:min-w-[160px] bg-terracotta hover:bg-terracotta-dark  text-white font-semibold py-2 md:py-3 px-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95"
-                                disabled={unusedPiecesCount === 0 && state !== StepState.DONE}
+                                className="min-w-[140px] md:min-w-[160px] bg-terracotta hover:bg-terracotta-dark text-white font-semibold py-2 md:py-3 px-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95"
+                                disabled={state === StepState.DONE}
                                 size={isMobile ? "default" : "lg"}
                             >
                                 Finalizează pas
@@ -235,7 +230,7 @@ const StepItem = memo(({
                             <Button
                                 onClick={handleFinalizeStep}
                                 className="min-w-[140px] md:min-w-[160px] bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white font-semibold py-2 md:py-3 px-4 rounded-xl transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95"
-                                disabled={unusedPiecesCount === 0 && state !== StepState.DONE}
+                                disabled={state === StepState.DONE && unusedPiecesCount === 0}
                                 size={isMobile ? "default" : "lg"}
                             >
                                 Finalizează puzzle
@@ -272,91 +267,89 @@ const StepsListComponent = ({
     reverseStep,
     resetToLast
 }: StepListProps) => {
-    const [openStep, setOpenStep] = useState(`step-${steps[0]?.stepNumber || 1}`);
+    const [currentStep, setCurrentStep] = useState(1);
+    const [openStep, setOpenStep] = useState(`step-1`);
     const [showCongrats, setShowCongrats] = useState(false);
     const [isInitialized, setIsInitialized] = useState(false);
     const [previewKey, setPreviewKey] = useState(0);
     const router = useRouter();
+    const isTransitioning = useRef(false);
 
     useEffect(() => {
         setIsInitialized(true);
     }, []);
 
-    const currentStepNumber = useMemo(() =>
-        isInitialized ? Number(openStep.replace("step-", "")) : 1,
-        [openStep, isInitialized]
-    );
-
-    const filteredUsedPieces = useMemo(() =>
-        usedPieces.filter(v => v.isMobile === isMobile),
-        [usedPieces, isMobile]
-    );
-
-    const filteredUnusedPieces = useMemo(() =>
-        unusedPieces.filter(v => v.isMobile === isMobile),
-        [unusedPieces, isMobile]
-    );
-
     const totalPiecesCount = useMemo(() =>
-        filteredUsedPieces.length + filteredUnusedPieces.length,
-        [filteredUsedPieces.length, filteredUnusedPieces.length]
+        usedPieces.length + unusedPieces.length,
+        [usedPieces.length, unusedPieces.length]
     );
 
     const totalProgress = useMemo(() =>
-        totalPiecesCount > 0 ? (filteredUsedPieces.length / totalPiecesCount) * 100 : 0,
-        [filteredUsedPieces.length, totalPiecesCount]
+        totalPiecesCount > 0 ? (usedPieces.length / totalPiecesCount) * 100 : 0,
+        [usedPieces.length, totalPiecesCount]
     );
 
     const isPuzzleComplete = useMemo(() =>
-        filteredUnusedPieces.length === 0 && filteredUsedPieces.length > 0,
-        [filteredUnusedPieces.length, filteredUsedPieces.length]
+        unusedPieces.length === 0 && usedPieces.length > 0,
+        [unusedPieces.length, usedPieces.length]
     );
 
-    useEffect(() => {
-        if (isPuzzleComplete && !showCongrats && isInitialized) {
-            setShowCongrats(true);
+    // Funcție pentru schimbarea pasului curent
+    const handleStepChange = useCallback((newStep: number) => {
+        if (isTransitioning.current || !isInitialized) return;
+
+        isTransitioning.current = true;
+
+        if (newStep > currentStep) {
+            // Avansare: folosește piesele între pasul curent și cel nou
+            const piecesToUse = unusedPieces.filter(p => p.step >= currentStep && p.step < newStep);
+            if (piecesToUse.length > 0) {
+                usePieces(piecesToUse);
+            }
+        } else if (newStep < currentStep) {
+            // Revenire: resetează la pasul dorit
+            const targetStep = steps.find(s => s.stepNumber === newStep);
+            if (targetStep) {
+                resetToLast(targetStep);
+            }
         }
-    }, [isPuzzleComplete, showCongrats, isInitialized]);
 
-    const handleStepChange = useCallback((newStepValue: string | undefined) => {
-        if (!isInitialized) return;
+        setCurrentStep(newStep);
+        setOpenStep(`step-${newStep}`);
+        setPreviewKey(prev => prev + 1);
 
-        // Dacă utilizatorul apasă pe același pas => shadcn trimite undefined => închide accordionul
+        setTimeout(() => {
+            isTransitioning.current = false;
+        }, 300);
+    }, [currentStep, unusedPieces, usePieces, resetToLast, steps, isInitialized]);
+
+    // Gestionare schimbare accordion
+    const handleAccordionChange = useCallback((newStepValue: string | undefined) => {
+        if (!isInitialized || isTransitioning.current) return;
+
         if (!newStepValue) {
+            // Închide acordeonul
             setOpenStep("");
             return;
         }
 
         const newStep = Number(newStepValue.replace("step-", ""));
-        const oldStep = currentStepNumber;
 
-        setOpenStep(newStepValue);
-
-        if (newStep !== oldStep) {
-            if (newStep > oldStep) {
-                const piecesToUse = unusedPieces.filter(v => v.step >= oldStep && v.step < newStep);
-                if (piecesToUse.length > 0) {
-                    usePieces(piecesToUse);
-                }
-            } else if (newStep < oldStep) {
-                const selectedStep = steps.find(s => s.stepNumber === newStep);
-                if (selectedStep) {
-                    resetToLast(selectedStep);
-                }
-            }
+        if (newStep !== currentStep) {
+            handleStepChange(newStep);
+        } else {
+            setOpenStep(newStepValue);
         }
-    }, [currentStepNumber, unusedPieces, usePieces, resetToLast, steps, isInitialized]);
-
+    }, [currentStep, handleStepChange, isInitialized]);
 
     const stepItemsData = useMemo(() =>
         steps.map(step => {
-            const stepValue = `step-${step.stepNumber}`;
-            const isCurrent = openStep === stepValue;
-            const isDone = usedPieces.some(p => p.step === step.stepNumber);
+            const isCurrent = step.stepNumber === currentStep;
+            const isDone = step.stepNumber < currentStep;
             const state = isCurrent ? StepState.CURRENT : isDone ? StepState.DONE : StepState.UNDONE;
 
-            const stepUsedPieces = usedPieces;
-            const stepUnusedPieces = unusedPieces.filter(v => v.step === step.stepNumber);
+            const stepUsedPieces = usedPieces.filter(p => p.step < step.stepNumber);
+            const stepUnusedPieces = unusedPieces.filter(p => p.step === step.stepNumber);
             const stepSvgImages = svgImages.filter(svg => svg.piece.step === step.stepNumber);
 
             return {
@@ -367,50 +360,37 @@ const StepsListComponent = ({
                 stepSvgImages
             };
         }),
-        [steps, openStep, usedPieces, unusedPieces, svgImages]
+        [steps, currentStep, usedPieces, unusedPieces, svgImages]
     );
-
-    const handleStepAction = useCallback((newStep: number, oldStep: number) => {
-        if (isInitialized && newStep <= steps.length && newStep >= 1) {
-            setOpenStep(`step-${newStep}`);
-        }
-    }, [steps.length, isInitialized]);
 
     const handleReview = useCallback(() => {
         setShowCongrats(false);
-        setTimeout(() => {
-            setOpenStep(`step-1`);
-            const firstStep = steps[0];
-            if (firstStep) {
-                resetToLast(firstStep);
-                window.scrollTo({
-                    top: 0,
-                    behavior: 'smooth'
-                });
-                setTimeout(() => {
-                    setOpenStep(`step-1`);
-                }, 100);
-            }
-        }, 100);
-    }, [steps, resetToLast]);
+        const lastStep = steps[steps.length - 1];
+        if (lastStep) {
+            handleStepChange(steps.length);
+        }
+    }, [steps, handleStepChange]);
 
     const handleGoHome = useCallback(() => {
+        setShowCongrats(false);
+        resetToLast(steps[0]);
+        setCurrentStep(1);
+        setOpenStep(`step-1`);
+        setPreviewKey(prev => prev + 1);
+
         setTimeout(() => {
-            setOpenStep(`step-1`);
-            const firstStep = steps[0];
-            if (firstStep) {
-                resetToLast(firstStep);
-                window.scrollTo({
-                    top: 0,
-                    behavior: 'smooth'
-                });
-                setTimeout(() => {
-                    setOpenStep(`step-1`);
-                }, 100);
-            }
+            router.push('/');
         }, 100);
-        router.push('/');
     }, [router, steps, resetToLast]);
+
+    // Verifică dacă puzzle-ul este complet
+    useEffect(() => {
+        if (isPuzzleComplete && !showCongrats && isInitialized && currentStep === steps.length) {
+            setTimeout(() => {
+                setShowCongrats(true);
+            }, 500);
+        }
+    }, [isPuzzleComplete, showCongrats, isInitialized, currentStep, steps.length]);
 
     if (!isInitialized || !isVisible) {
         return null;
@@ -421,10 +401,9 @@ const StepsListComponent = ({
             }`}>
             {/* Header */}
             <div className="text-left mb-4 md:mb-6 px-2">
-                <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-terracotta to-orange-500 bg-clip-text text-transparent mb-2">
+                <h2 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-terracotta to-terracotta-dark bg-clip-text text-transparent mb-2">
                     Pași de asamblare
                 </h2>
-
             </div>
 
             {/* Steps Accordion */}
@@ -433,7 +412,7 @@ const StepsListComponent = ({
                 collapsible
                 value={openStep}
                 className="w-full flex justify-center flex-col"
-                onValueChange={handleStepChange}
+                onValueChange={handleAccordionChange}
             >
                 {stepItemsData.map(({ step, state, stepUsedPieces, stepUnusedPieces, stepSvgImages }) => (
                     <StepItem
@@ -446,8 +425,7 @@ const StepsListComponent = ({
                         stepSvgImages={stepSvgImages}
                         puzzle={puzzle}
                         onUsePieces={usePieces}
-                        onReverseStep={reverseStep}
-                        onStepChange={handleStepAction}
+                        onStepChange={handleStepChange}
                         previewKey={previewKey}
                         setShowCongrats={setShowCongrats}
                     />
@@ -459,7 +437,7 @@ const StepsListComponent = ({
                 <div className="flex justify-between text-sm md:text-base text-gray-600 mb-3 font-medium">
                     <span>Progres total</span>
                     <span>
-                        {filteredUsedPieces.length} / {totalPiecesCount} piese
+                        {usedPieces.length} / {totalPiecesCount} piese
                     </span>
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-3 md:h-4 shadow-inner overflow-hidden">

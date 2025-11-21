@@ -2,10 +2,7 @@
 import PuzzleComponent from "@/components/models/house/PuzzleComponent"
 
 
-
-type Props = {}
-
-const page = (props: Props) => {
+const page = () => {
 
     return (
         <div>

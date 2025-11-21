@@ -20,13 +20,11 @@ type IPuzzleResultPreviewer = {
     isVisible?: boolean
 }
 
-// Helper function pentru a obține devicePixelRatio în mod safe
 const getSafeDevicePixelRatio = (maxRatio: number = 2): number => {
-    if (typeof window === 'undefined') return 1; // Server-side, return default
+    if (typeof window === 'undefined') return 1;
     return Math.min(window.devicePixelRatio, maxRatio);
 };
 
-// Component pentru managementul calității
 const QualityManager = ({
     quality,
     isMobile
@@ -37,7 +35,6 @@ const QualityManager = ({
     const { gl, scene } = useThree();
 
     useEffect(() => {
-        // Ajustări de calitate bazate pe setări
         switch (quality) {
             case 'high':
                 gl.setPixelRatio(getSafeDevicePixelRatio(2));
@@ -51,7 +48,6 @@ const QualityManager = ({
                 break;
         }
 
-        // Ajustări suplimentare pentru scenă
         scene.traverse((child) => {
             if (child instanceof THREE.Mesh) {
                 child.frustumCulled = true;
@@ -62,8 +58,69 @@ const QualityManager = ({
     return null;
 };
 
+// 🎯 Component simplu pentru piese statice (fără shared geometry - revert la simplitate)
+const CombinedStaticPieces = React.memo(({
+    pieces,
+    usedPiecesData
+}: {
+    pieces: any[],
+    usedPiecesData: PuzzlePiece[]
+}) => {
+    return (
+        <>
+            {pieces.map((piece, index) => {
+                const data = usedPiecesData[index];
+                if (!piece || !data) return null;
 
-// Optimized Animated Piece with placementDir animation
+                const placement = data.placementDir?.end;
+                const position = placement && Array.isArray(placement) && placement.length >= 3
+                    ? [placement[0], placement[1], placement[2]]
+                    : [0, 0, 0];
+
+                return (
+                    <group key={data._id} position={position as any}>
+                        <primitive object={piece} />
+                    </group>
+                );
+            })}
+        </>
+    );
+});
+
+CombinedStaticPieces.displayName = 'CombinedStaticPieces';
+
+// Fallback simplu dacă optimized nu funcționează
+const StaticPiecesFallback = React.memo(({
+    pieces,
+    usedPiecesData
+}: {
+    pieces: any[],
+    usedPiecesData: PuzzlePiece[]
+}) => {
+    return (
+        <>
+            {pieces.map((piece, index) => {
+                const data = usedPiecesData[index];
+                if (!piece || !data) return null;
+
+                const placement = data.placementDir?.end;
+                const position = placement && Array.isArray(placement) && placement.length >= 3
+                    ? [placement[0], placement[1], placement[2]]
+                    : [0, 0, 0];
+
+                return (
+                    <group key={data._id} position={position as any}>
+                        <primitive object={piece} />
+                    </group>
+                );
+            })}
+        </>
+    );
+});
+
+StaticPiecesFallback.displayName = 'StaticPiecesFallback';
+
+// Animated Piece optimizat (fără modificări majore, dar mai clean)
 const AnimatedPiece = React.memo(({
     piece,
     finalPosition,
@@ -83,14 +140,9 @@ const AnimatedPiece = React.memo(({
 }) => {
     const meshRef = useRef<THREE.Group>(null);
     const progressRef = useRef(0);
-    const [showArrow, setShowArrow] = useState(false);
     const animationRef = useRef<number | null>(null);
+    const [isReady, setIsReady] = useState(false);
 
-    // Referință pentru bounding box
-    const boundingBoxRef = useRef<THREE.Box3>(new THREE.Box3());
-    const pieceSizeRef = useRef<THREE.Vector3>(new THREE.Vector3());
-
-    // Calculăm poziția de start bazată pe placementDir sau folosim default
     const startPosition = useMemo(() => {
         if (placementDir?.start) {
             return new THREE.Vector3(
@@ -106,7 +158,6 @@ const AnimatedPiece = React.memo(({
         );
     }, [finalPosition, placementDir]);
 
-    // Calculăm poziția finală
     const targetPosition = useMemo(() => {
         if (placementDir?.end) {
             return new THREE.Vector3(
@@ -118,51 +169,23 @@ const AnimatedPiece = React.memo(({
         return finalPosition;
     }, [finalPosition, placementDir]);
 
-    // Calculăm bounding box-ul piesei pentru a determina dimensiunile
-    useEffect(() => {
-        if (piece) {
-            boundingBoxRef.current.setFromObject(piece);
-            boundingBoxRef.current.getSize(pieceSizeRef.current);
-        }
-    }, [piece]);
-
-    // Funcție pentru a obține poziția săgeții bazată pe poziția curentă a piesei
-    const getArrowPosition = useCallback((currentPos: THREE.Vector3) => {
-        if (!meshRef.current || !piece) {
-            return {
-                start: new THREE.Vector3(0, 6, 0),
-                end: new THREE.Vector3(0, 1, 0)
-            };
-        }
-
-        // Obținem target-ul default din mesh-ul piesei
-        const pieceTarget = getDefaultTargetFromGLB(piece);
-
-        // Calculăm poziția de start a săgeții (deasupra piesei)
-        const arrowStart = new THREE.Vector3(
-            currentPos.x + pieceTarget.x,
-            currentPos.y + pieceSizeRef.current.y * 0.8, // 80% din înălțimea piesei
-            currentPos.z + pieceTarget.z
-        );
-
-        // Calculăm poziția de sfârșit a săgeții (centrul piesei)
-        const arrowEnd = new THREE.Vector3(
-            currentPos.x + pieceTarget.x,
-            currentPos.y + pieceSizeRef.current.y * 0.2, // 20% din înălțimea piesei
-            currentPos.z + pieceTarget.z
-        );
-
-        return { start: arrowStart, end: arrowEnd };
-    }, [piece]);
-
     const tempVector = useMemo(() => new THREE.Vector3(), []);
     const easeOutCubic = useCallback((t: number) => 1 - Math.pow(1 - t, 3), []);
 
+    // 🔧 FIX: Inițializare mesh cu vizibilitate corectă
+    useEffect(() => {
+        if (meshRef.current && piece) {
+            meshRef.current.visible = false;
+            meshRef.current.position.copy(startPosition);
+            // Forțează update matrices
+            meshRef.current.updateMatrix();
+            meshRef.current.updateMatrixWorld(true);
+            setIsReady(true);
+        }
+    }, [piece, startPosition]);
 
-
-    // Actualizăm poziția săgeții la fiecare frame
     useFrame(() => {
-        if (!meshRef.current || !isAnimating) return;
+        if (!meshRef.current || !isAnimating || !isReady) return;
 
         const progress = progressRef.current;
         const eased = easeOutCubic(Math.max(0, progress));
@@ -180,17 +203,13 @@ const AnimatedPiece = React.memo(({
             meshRef.current.visible = true;
         }
 
-        // Interpolăm poziția
         tempVector.lerpVectors(startPosition, targetPosition, eased);
         meshRef.current.position.copy(tempVector);
-
     });
 
-    // Animation logic
     useEffect(() => {
-        if (!isAnimating) {
+        if (!isAnimating || !isReady) {
             progressRef.current = 0;
-            setShowArrow(false);
             if (animationRef.current) {
                 cancelAnimationFrame(animationRef.current);
                 animationRef.current = null;
@@ -205,7 +224,6 @@ const AnimatedPiece = React.memo(({
         }
 
         progressRef.current = 0;
-        setShowArrow(true);
 
         const timer = setTimeout(() => {
             const duration = 1500;
@@ -217,14 +235,9 @@ const AnimatedPiece = React.memo(({
 
                 progressRef.current = newProgress;
 
-                if (newProgress >= 0.8) {
-                    setShowArrow(false);
-                }
-
                 if (newProgress < 1) {
                     animationRef.current = requestAnimationFrame(animate);
                 } else {
-                    setShowArrow(false);
                     animationRef.current = null;
                 }
             };
@@ -239,7 +252,7 @@ const AnimatedPiece = React.memo(({
                 animationRef.current = null;
             }
         };
-    }, [isAnimating, delay, animationKey, startPosition]);
+    }, [isAnimating, delay, animationKey, startPosition, isReady]);
 
     return (
         <group ref={meshRef}>
@@ -249,15 +262,6 @@ const AnimatedPiece = React.memo(({
 });
 
 AnimatedPiece.displayName = 'AnimatedPiece';
-
-AnimatedPiece.displayName = 'AnimatedPiece';
-
-// Memoized static piece component
-const StaticPiece = React.memo(({ piece }: { piece: any }) => {
-    return <primitive object={piece} />;
-});
-
-StaticPiece.displayName = 'StaticPiece';
 
 const PuzzleResultPreviewer = ({
     puzzle,
@@ -278,7 +282,6 @@ const PuzzleResultPreviewer = ({
     const [animationKey, setAnimationKey] = useState(0);
     const [adaptiveQuality, setAdaptiveQuality] = useState<'low' | 'medium' | 'high'>('medium');
 
-    // Calitate adaptivă bazată pe context
     useEffect(() => {
         let quality: 'low' | 'medium' | 'high' = 'medium';
 
@@ -299,7 +302,6 @@ const PuzzleResultPreviewer = ({
         setAdaptiveQuality(quality);
     }, [isVisible, isMobile, priority]);
 
-    // Configurație calitate detaliată - FOLOSIM getSafeDevicePixelRatio
     const qualityConfig = useMemo(() => {
         const configs = {
             high: {
@@ -336,9 +338,6 @@ const PuzzleResultPreviewer = ({
         setIsAnimating(true);
     }, []);
 
-
-
-    // Memoized camera configuration
     const cameraConfig = useMemo(() => {
         const baseConfig = {
             position: [4, 3, 6] as [number, number, number],
@@ -358,26 +357,52 @@ const PuzzleResultPreviewer = ({
         return baseConfig;
     }, [isMobile]);
 
-    // Memoized scale
     const scale = useMemo(() =>
         isMobile ? new THREE.Vector3(0.2, 0.2, 0.2) : new THREE.Vector3(0.3, 0.3, 0.3),
         [isMobile]
     );
 
-    // Optimized loading functions
     const load3DComponent = useCallback(async (pieces: PuzzlePiece[]) => {
-        if (!isVisible) return;
+        if (!isVisible || pieces.length === 0) {
+            setVisiblePieces([]);
+            setIsLoading(false);
+            return;
+        }
 
+        console.time('🎨 Load 3D Component');
+
+        // 🎯 OPTIMIZARE: Verifică dacă piesele s-au schimbat cu adevărat
+        const pieceIds = pieces.map(p => p._id).sort().join(',');
+        const prevPieceIds = visiblePieces.length > 0
+            ? usedPieces.map(p => p._id).sort().join(',')
+            : '';
+
+        if (pieceIds === prevPieceIds && visiblePieces.length > 0) {
+            console.log('⏭️ Skipping reload - same pieces');
+            console.timeEnd('🎨 Load 3D Component');
+            return;
+        }
+
+        console.log('🔄 Loading 3D pieces:', pieces.length);
         setIsLoading(true);
+
         try {
+            console.time('  └─ GLB Loading');
             const loadedPieces = await loadPuzzlePieces(pieces);
+            console.timeEnd('  └─ GLB Loading');
+
+            console.time('  └─ State Update');
             setVisiblePieces(loadedPieces);
+            console.timeEnd('  └─ State Update');
+
+            console.log('✅ Loaded 3D pieces:', loadedPieces.length);
         } catch (error) {
             console.error('Error loading puzzle pieces:', error);
         } finally {
             setIsLoading(false);
+            console.timeEnd('🎨 Load 3D Component');
         }
-    }, [isVisible]);
+    }, [isVisible, visiblePieces.length, usedPieces]);
 
     const loadAnimatedPieces = useCallback(async (pieces: PuzzlePiece[]) => {
         if (!isVisible || pieces.length === 0) {
@@ -386,12 +411,23 @@ const PuzzleResultPreviewer = ({
         }
 
         const minStep = Math.min(...pieces.map(v => v.step || 0));
-        const filtered = pieces.filter(v => v.step === minStep && v.isMobile === isMobile);
+        const filtered = pieces.filter(v => v.step === minStep);
 
         if (filtered.length === 0) {
             setLastPieces([]);
             return;
         }
+
+        // 🎯 OPTIMIZARE: Verifică dacă piesele s-au schimbat
+        const newIds = filtered.map(p => p._id).sort().join(',');
+        const currentIds = lastPieces.map(p => p.data._id).sort().join(',');
+
+        if (newIds === currentIds && lastPieces.length > 0) {
+            console.log('⏭️ Skipping animated reload - same pieces');
+            return;
+        }
+
+        console.log('🎬 Loading animated pieces:', filtered.length);
 
         try {
             const meshes = await loadPuzzlePieces(filtered);
@@ -403,21 +439,23 @@ const PuzzleResultPreviewer = ({
 
             setIsAnimating(true);
             setAnimationKey(prev => prev + 1);
+
+            console.log('✅ Loaded animated pieces:', combined.length);
         } catch (error) {
             console.error('Error loading animated pieces:', error);
         }
-    }, [isMobile, isVisible]);
+    }, [isVisible, lastPieces]);
 
-    // Optimized effects with dependencies
+    // Effect pentru încărcare piese statice
     useEffect(() => {
         load3DComponent(usedPieces);
     }, [usedPieces, load3DComponent]);
 
+    // Effect pentru încărcare piesele animate
     useEffect(() => {
         loadAnimatedPieces(unusedPieces);
     }, [unusedPieces, loadAnimatedPieces]);
 
-    // Memoized scene configuration cu calitate adaptivă
     const sceneConfig = useMemo(() => ({
         gl: {
             antialias: qualityConfig.antialias,
@@ -433,7 +471,6 @@ const PuzzleResultPreviewer = ({
         }
     }), [qualityConfig]);
 
-    // Memoized lighting configuration cu calitate adaptivă
     const lightingConfig = useMemo(() => ({
         ambient: {
             intensity: isMobile ? 0.8 : 0.7
@@ -450,7 +487,6 @@ const PuzzleResultPreviewer = ({
         }
     }), [isMobile, qualityConfig]);
 
-    // Memoized controls configuration
     const controlsConfig = useMemo(() => ({
         enablePan: !isMobile,
         enableZoom: true,
@@ -462,7 +498,6 @@ const PuzzleResultPreviewer = ({
         zoomSpeed: isMobile ? 1 : 1
     }), [isMobile]);
 
-    // Dacă nu este vizibil, returnăm un container minimal
     if (!isVisible) {
         return (
             <div
@@ -489,7 +524,6 @@ const PuzzleResultPreviewer = ({
             }}
             className="relative rounded-2xl shadow-2xl border border-white/20 bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-sm overflow-hidden w-full h-full min-h-[100px] sm:min-h-[100px]"
         >
-            {/* Loading indicator */}
             <AnimatePresence>
                 {isLoading && (
                     <motion.div
@@ -510,9 +544,6 @@ const PuzzleResultPreviewer = ({
                 )}
             </AnimatePresence>
 
-            {/* Control Buttons */}
-
-
             <Canvas
                 camera={cameraConfig}
                 onClick={restartAnimation}
@@ -520,17 +551,15 @@ const PuzzleResultPreviewer = ({
                     width: '100%',
                     height: '100%'
                 }}
+                frameloop={isAnimating ? 'always' : 'demand'} // 🔧 FIX: Demand când nu animează
                 {...sceneConfig}
             >
                 <color attach="background" args={["#F8FAFC"]} />
 
-                {/* Quality Manager */}
                 <QualityManager quality={adaptiveQuality} isMobile={isMobile} />
 
-                {/* Optimized Lighting */}
                 <ambientLight intensity={lightingConfig.ambient.intensity} />
 
-                {/* Directional Light cu shadow-uri condiționale */}
                 {qualityConfig.shadows && (
                     <directionalLight
                         position={new THREE.Vector3(...lightingConfig.directional.position)}
@@ -541,7 +570,6 @@ const PuzzleResultPreviewer = ({
                     />
                 )}
 
-                {/* Point Light doar pentru calitate medie/înaltă */}
                 {adaptiveQuality !== 'low' && (
                     <pointLight
                         position={lightingConfig.point.position}
@@ -556,22 +584,23 @@ const PuzzleResultPreviewer = ({
                     groundColor="#e2e8f0"
                 />
 
-                {/* Main model group */}
-                <group position={[0, 0, 0]} scale={scale} >
-                    {/* Static pieces */}
-                    {visiblePieces.map((piece, i) => {
-                        const data = usedPieces[i];
-                        return data ? <StaticPiece key={data._id} piece={piece} /> : null;
-                    })}
+                <group position={[0, 0, 0]} scale={scale}>
+                    {/* Static pieces - simplu și direct, fără optimizări complexe */}
+                    {visiblePieces.length > 0 && usedPieces.length > 0 && (
+                        <CombinedStaticPieces
+                            pieces={visiblePieces}
+                            usedPiecesData={usedPieces}
+                        />
+                    )}
 
                     {/* Animated pieces */}
                     {lastPieces.map((pieceObj, i) => {
-                        const { data, mesh } = pieceObj;
+                        const { data, mesh }: { data: PuzzlePiece, mesh: any } = pieceObj;
                         return data && mesh ? (
                             <AnimatedPiece
                                 key={`anim-${data._id}-${animationKey}`}
                                 piece={mesh}
-                                finalPosition={new THREE.Vector3(...data.position)}
+                                finalPosition={new THREE.Vector3(...data.placementDir.end)}
                                 isAnimating={isAnimating}
                                 delay={i * 400}
                                 animationKey={animationKey}
@@ -584,13 +613,12 @@ const PuzzleResultPreviewer = ({
 
                 {threeScene === null && <SceneExporter onSceneReady={setThreeScene} />}
 
-                {/* Optimized Controls */}
                 <OrbitControls
                     ref={controlsRef}
                     {...controlsConfig}
+                    enabled={isVisible} // 🔧 FIX: Disable când nu e vizibil
                 />
 
-                {/* Environment cu calitate ajustabilă */}
                 <Environment
                     preset="apartment"
                     background={false}
@@ -598,7 +626,6 @@ const PuzzleResultPreviewer = ({
                 />
             </Canvas>
 
-            {/* Animation Status */}
             <AnimatePresence>
                 {!isAnimating && (
                     <motion.div
@@ -614,8 +641,6 @@ const PuzzleResultPreviewer = ({
                     </motion.div>
                 )}
             </AnimatePresence>
-
-
         </motion.div>
     );
 }

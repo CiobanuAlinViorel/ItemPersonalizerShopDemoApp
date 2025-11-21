@@ -3,8 +3,8 @@ import { IPuzzle, IPuzzleSteps, PuzzlePiece, puzzles } from '../collection/puzzl
 
 interface IPuzzleStore {
     products: IPuzzle[],
-    unusedPieces: PuzzlePiece[] | null,
-    usedPieces: PuzzlePiece[] | null,
+    unusedPieces: PuzzlePiece[],
+    usedPieces: PuzzlePiece[],
     initializePuzzle: (pieces: PuzzlePiece[]) => void,
     usePieces: (pieces: PuzzlePiece[]) => void,
     reverseStep: () => void;
@@ -23,57 +23,105 @@ export const usePuzzleStore = create<IPuzzleStore>((set, get) => ({
     usePieces: (pieces) => {
         const { unusedPieces, usedPieces } = get();
 
+        // 🎯 OPTIMIZARE: Early return dacă nu sunt piese de adăugat
+        if (pieces.length === 0) return;
+
         // Elimină doar piesele specifice care sunt folosite
         const pieceIdsToRemove = new Set(pieces.map(p => p._id));
+
+        // 🎯 OPTIMIZARE: Verifică dacă chiar trebuie să update-ezi state-ul
+        const hasChanges = unusedPieces.some(p => pieceIdsToRemove.has(p._id));
+        if (!hasChanges) return;
 
         set({
             unusedPieces: unusedPieces.filter(p => !pieceIdsToRemove.has(p._id)),
             usedPieces: [...usedPieces, ...pieces]
         });
     },
+
     reverseStep: () => {
-        const { usedPieces, unusedPieces } = get()
-        if (usedPieces.length > 0) {
-            const lastPieces = usedPieces.filter((value, index) => value.step === Math.max(...usedPieces.map(item => item.step)))
-            set({
-                usedPieces: usedPieces.slice(0, -lastPieces.length),
-                unusedPieces: [...lastPieces, ...unusedPieces]
-            })
-        }
+        const { usedPieces, unusedPieces } = get();
+
+        // 🎯 OPTIMIZARE: Early return dacă nu sunt piese de reversat
+        if (usedPieces.length === 0) return;
+
+        const maxStep = Math.max(...usedPieces.map(item => item.step));
+        const lastPieces = usedPieces.filter(value => value.step === maxStep);
+
+        // 🎯 OPTIMIZARE: Evită update dacă nu sunt piese de mutat
+        if (lastPieces.length === 0) return;
+
+        set({
+            usedPieces: usedPieces.slice(0, -lastPieces.length),
+            unusedPieces: [...lastPieces, ...unusedPieces]
+        });
     },
+
     resetPuzzle: () => {
         const { usedPieces, unusedPieces } = get();
-        if (usedPieces.length > 0) {
-            set({
-                unusedPieces: [...usedPieces, ...unusedPieces],
-                usedPieces: []
 
-            })
-        }
+        // 🎯 OPTIMIZARE: Early return dacă puzzle-ul e deja resetat
+        if (usedPieces.length === 0) return;
+
+        set({
+            unusedPieces: [...usedPieces, ...unusedPieces],
+            usedPieces: []
+        });
     },
+
     useAllPieces: () => {
         const { usedPieces, unusedPieces } = get();
-        if (unusedPieces.length > 0) {
-            set({
-                usedPieces: [...usedPieces, ...unusedPieces],
-                unusedPieces: []
-            })
-        }
+
+        // 🎯 OPTIMIZARE: Early return dacă toate piesele sunt deja folosite
+        if (unusedPieces.length === 0) return;
+
+        set({
+            usedPieces: [...usedPieces, ...unusedPieces],
+            unusedPieces: []
+        });
     },
+
     resetToLast: (step) => {
         const { usedPieces, unusedPieces } = get();
 
-        // piesele care trebuie date înapoi
+        // 🎯 OPTIMIZARE: Calculează doar odată
         const piecesToReset = usedPieces.filter(v => v.step >= step.stepNumber);
+        const remainingUsedPieces = usedPieces.filter(v => v.step < step.stepNumber);
+
+        // 🎯 OPTIMIZARE: Early return dacă nu sunt modificări
+        if (piecesToReset.length === 0) return;
 
         set({
-            // pun piesele resetate înapoi + piesele care erau deja nefolosite
             unusedPieces: [...unusedPieces, ...piecesToReset],
-
-            // păstrez doar piesele de până la acel pas
-            usedPieces: usedPieces.filter(v => v.step < step.stepNumber),
+            usedPieces: remainingUsedPieces,
         });
     }
+}));
 
+// 🎯 OPTIMIZARE: Selectori custom pentru componente
+// Acestea previn re-renders inutile când se schimbă părți nefolosite din store
 
-}))
+export const useProducts = () => usePuzzleStore(state => state.products);
+export const useUsedPieces = () => usePuzzleStore(state => state.usedPieces);
+export const useUnusedPieces = () => usePuzzleStore(state => state.unusedPieces);
+
+// Selectori pentru actions (nu trigger re-render la modificări de state)
+export const usePuzzleActions = () => usePuzzleStore(state => ({
+    initializePuzzle: state.initializePuzzle,
+    usePieces: state.usePieces,
+    reverseStep: state.reverseStep,
+    resetPuzzle: state.resetPuzzle,
+    useAllPieces: state.useAllPieces,
+    resetToLast: state.resetToLast
+}));
+
+// Selector pentru stats (computații memoizate)
+export const usePuzzleStats = () => usePuzzleStore(state => ({
+    totalPieces: state.usedPieces.length + state.unusedPieces.length,
+    usedCount: state.usedPieces.length,
+    unusedCount: state.unusedPieces.length,
+    isComplete: state.unusedPieces.length === 0 && state.usedPieces.length > 0,
+    progress: state.usedPieces.length + state.unusedPieces.length > 0
+        ? (state.usedPieces.length / (state.usedPieces.length + state.unusedPieces.length)) * 100
+        : 0
+}));

@@ -183,8 +183,8 @@ const PieceView = React.memo(({
         maxDistance: 8,
         minDistance: 1,
         enableDamping: true,
-        dampingFactor: 0.01,
-        rotateSpeed: 1.2,
+        dampingFactor: 0.05,
+        rotateSpeed: 2,
         zoomSpeed: 1,
     }), [isMobile]);
 
@@ -221,7 +221,7 @@ const PieceView = React.memo(({
     if (!isVisible) {
         return (
             <div
-                className="relative w-[100vh] h-[100vh] border border-gray-300 rounded-lg bg-gray-100 flex items-center justify-center my-4"
+                className="relative w-[100vh] h-screen border border-gray-300 rounded-lg bg-gray-100 flex items-center justify-center my-4"
             >
                 <p className="text-gray-500 text-sm">Preview 3D indisponibil</p>
             </div>
@@ -231,7 +231,7 @@ const PieceView = React.memo(({
     return (
         <div
             ref={containerRef}
-            className="relative w-full h-full border border-gray-300 rounded-lg bg-white my-4 overflow-hidden"
+            className={`relative ${isMobile ? "w-[100%]" : "w-[100%]"} h-[50vh] border border-gray-300 rounded-lg bg-white my-4 overflow-hidden`}
         >
             {/* Loading indicator */}
             {(isLoading || loadError) && (

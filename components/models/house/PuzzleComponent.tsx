@@ -25,7 +25,7 @@ const PuzzleComponent = (props: Props) => {
     const [svgImages, setSvgImages] = useState<ParsedSVGImage[]>([]);
     const [openStepList, setOpenList] = useState(true);
     const [isLoading, setIsLoading] = useState(false);
-    const resizeTimeoutRef = useRef<NodeJS.Timeout>(null);
+    const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
     const {
         products,
@@ -44,7 +44,7 @@ const PuzzleComponent = (props: Props) => {
 
     // Memoized filtered pieces based on device type
     const filteredUnusedPieces = useMemo(() =>
-        unusedPieces.filter(piece => piece.isMobile === isMobile),
+        unusedPieces,
         [unusedPieces, isMobile]
     );
 
@@ -98,7 +98,7 @@ const PuzzleComponent = (props: Props) => {
                             };
                             img.src = url;
                         });
-                    } catch (error) {
+                    } catch (error: any) {
                         if (error.name !== 'AbortError') {
                             console.warn(`Error loading SVG for ${piece.partName}:`, error);
                         }
@@ -119,14 +119,12 @@ const PuzzleComponent = (props: Props) => {
             if (!controller.signal.aborted) {
                 setSvgImages(loadedImages);
             }
-        } catch (error) {
+        } catch (error: any) {
             if (error.name !== 'AbortError') {
                 console.error('Error loading SVGs:', error);
             }
         } finally {
-            if (!isLoading) {
-                setIsLoading(false);
-            }
+            setIsLoading(false);
         }
     }, [filteredUnusedPieces, isMobile]);
 
@@ -232,7 +230,6 @@ const PuzzleComponent = (props: Props) => {
                         <PuzzleFinalResult
                             puzzle={currentPuzzle}
                             isMobile={isMobile}
-                            usedPieces={currentPuzzle.pieces}
                         />
                         <div>
                             <h1 className={`text-2xl md:text-5xl font-bold bg-gradient-to-r from-slate-800 to-emerald-600 bg-clip-text text-transparent mb-4`}>
@@ -276,7 +273,8 @@ const PuzzleComponent = (props: Props) => {
         unusedPieces,
         usePieces,
         reverseStep,
-        resetToLast
+        resetToLast,
+        resetPuzzle
     ]);
 
     return mainContent;

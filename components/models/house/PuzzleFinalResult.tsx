@@ -1,109 +1,79 @@
 'use client';
 
-import { SceneExporter } from '@/components/SceneExporter';
-import { IPuzzle, PuzzlePiece } from '@/lib/collection/puzzle'
-import { loadPuzzlePieces } from '@/lib/utils/glbLoader';
-import { Environment, OrbitControls } from '@react-three/drei';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { useEffect, useRef, useState } from 'react';
-import * as THREE from 'three';
+import { IPuzzle } from '@/lib/collection/puzzle';
+import { Environment, OrbitControls, useGLTF } from '@react-three/drei';
+import { Canvas } from '@react-three/fiber';
+import { useEffect, useRef, useState, useCallback, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, RotateCcw, ZoomIn, ExternalLink, Minimize, Expand, Shrink } from 'lucide-react';
+import { Expand, Shrink, Pause } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 type IPuzzleResultPreviewer = {
-    puzzle: IPuzzle,
-    isMobile: boolean,
-    usedPieces: PuzzlePiece[],
-}
+    puzzle: IPuzzle;
+    isMobile: boolean;
+};
 
+// Componentă directă cu useGLTF
+const GLTFModel = ({ url, onLoad }: { url: string; onLoad: () => void }) => {
+    const { scene } = useGLTF(url);
+
+    useEffect(() => {
+        // Modelul este încărcat, notifică componenta părinte
+        onLoad();
+    }, [scene, onLoad]);
+
+    return <primitive object={scene} />;
+};
+
+const LoadingSpinner = () => (
+    <mesh rotation={[0, 0, 0]}>
+        <torusGeometry args={[1, 0.05, 16, 32]} />
+        <meshBasicMaterial color="#10b981" transparent opacity={0.8} />
+    </mesh>
+);
 
 const PuzzleFinalResult = ({
     puzzle,
     isMobile,
-    usedPieces,
 }: IPuzzleResultPreviewer) => {
     const containerRef = useRef<HTMLDivElement>(null);
-    const [threeScene, setThreeScene] = useState<THREE.Scene | null>(null);
-    const [visiblePieces, setVisiblePieces] = useState<any[]>([]);
-    const [isAnimating, setIsAnimating] = useState(true);
-    const [isLoading, setIsLoading] = useState(true);
     const [isFullscreen, setIsFullscreen] = useState(false);
-    const controlsRef = useRef<any>(null);
+    const [isLoading, setIsLoading] = useState(true);
     const [autoRotate, setAutoRotate] = useState(true);
-    const timeoutRef = useRef(null);
 
-    const load3DComponent = async (pieces: PuzzlePiece[]) => {
-        setIsLoading(true);
-        setVisiblePieces(await loadPuzzlePieces(pieces));
-        setIsLoading(false);
-    }
-
-    const handleToggleFullscreen = () => {
-        if (!isFullscreen) {
-            // Enter fullscreen
-            if (containerRef.current?.requestFullscreen) {
-                containerRef.current.requestFullscreen();
-            } else if ((containerRef.current as any)?.webkitRequestFullscreen) {
-                (containerRef.current as any).webkitRequestFullscreen();
-            } else if ((containerRef.current as any)?.msRequestFullscreen) {
-                (containerRef.current as any).msRequestFullscreen();
-            }
-        } else {
-            // Exit fullscreen
-            if (document.exitFullscreen) {
-                document.exitFullscreen();
-            } else if ((document as any).webkitExitFullscreen) {
-                (document as any).webkitExitFullscreen();
-            } else if ((document as any).msExitFullscreen) {
-                (document as any).msExitFullscreen();
-            }
-        }
-    };
-
-
-    const handleUserInteraction = () => {
-        // Oprim rotația automată
-        setAutoRotate(false);
-
-        // Resetăm timeout-ul anterior dacă există
-        if (timeoutRef.current) {
-            clearTimeout(timeoutRef.current);
-        }
-
-        // Pornim un nou timeout pentru a relua rotația după 10 secunde
-        timeoutRef.current = setTimeout(() => {
-            setAutoRotate(true);
-        }, 10000); // 10 secunde
-    };
-
-    // Adăugăm event listener pentru interacțiuni
+    // Preload the model on component mount
     useEffect(() => {
-        const controls = controlsRef.current;
-        if (!controls) return;
+        const preloadModel = async () => {
+            try {
+                // Import și preload
+                const { useGLTF } = await import('@react-three/drei');
+                const gltf = useGLTF;
 
-        // Adăugăm event listener pentru toate evenimentele relevante
-        const events = ['start', 'change'];
-        const eventHandlers = events.map(event =>
-            controls.addEventListener(event, handleUserInteraction)
-        );
-
-        // Cleanup
-        return () => {
-            if (timeoutRef.current) {
-                clearTimeout(timeoutRef.current);
-            }
-            events.forEach((event, index) => {
-                if (eventHandlers[index]) {
-                    controls.removeEventListener(event, handleUserInteraction);
+                // Folosim preload dacă este disponibil
+                if (gltf && (gltf as any).preload) {
+                    (gltf as any).preload(puzzle.model3D);
                 }
-            });
+            } catch (error) {
+                console.error('Preload error:', error);
+            }
         };
-    }, []);
 
-    useEffect(() => {
-        load3DComponent(usedPieces);
-    }, [usedPieces])
+        preloadModel();
+    }, [puzzle.model3D]);
+
+    const handleToggleFullscreen = useCallback(() => {
+        if (!containerRef.current) return;
+
+        if (!isFullscreen) {
+            containerRef.current.requestFullscreen?.();
+        } else {
+            document.exitFullscreen?.();
+        }
+    }, [isFullscreen]);
+
+    const handleModelLoad = useCallback(() => {
+        setIsLoading(false);
+    }, []);
 
     useEffect(() => {
         const handleFullscreenChange = () => {
@@ -111,197 +81,81 @@ const PuzzleFinalResult = ({
         };
 
         document.addEventListener('fullscreenchange', handleFullscreenChange);
-        document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-        document.addEventListener('mozfullscreenchange', handleFullscreenChange);
-        document.addEventListener('MSFullscreenChange', handleFullscreenChange);
-
-        return () => {
-            document.removeEventListener('fullscreenchange', handleFullscreenChange);
-            document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('mozfullscreenchange', handleFullscreenChange);
-            document.removeEventListener('MSFullscreenChange', handleFullscreenChange);
-        };
+        return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
     }, []);
 
-    const getCameraConfig = () => {
-        if (isFullscreen) {
-            return { position: [5, 3, 7] as [number, number, number], fov: 50 };
-        }
-
-        let aspectRatio = 500 / 450;
-        if (isMobile) {
-            aspectRatio = 350 / 250;
-            return { position: [3, 2, 4] as [number, number, number], fov: 50 };
-        }
-
-        if (aspectRatio > 1.5) {
-            return { position: [5, 3, 7] as [number, number, number], fov: 45 };
-        } else if (aspectRatio < 0.8) {
-            return { position: [3, 2, 4] as [number, number, number], fov: 40 };
-        }
-
-        return { position: [4, 3, 6] as [number, number, number], fov: 45 };
+    const cameraConfig = {
+        position: [4, 3, 6] as [number, number, number],
+        fov: isMobile ? 55 : 45
     };
 
-    const cameraConfig = getCameraConfig();
+    const modelScale = (isMobile && !isFullscreen) ? 0.2 : 0.3;
 
     return (
         <motion.div
             ref={containerRef}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5 }}
+            className={`relative rounded-2xl shadow-2xl border border-white/20 bg-white overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none' : 'w-full h-full'
+                }`}
             style={{
                 width: isFullscreen ? '100vw' : (isMobile ? 300 : 500),
                 height: isFullscreen ? '100vh' : (isMobile ? 150 : 350)
             }}
-            className={`relative rounded-2xl shadow-2xl border border-white/20 bg-gradient-to-br from-white to-slate-50/80 backdrop-blur-sm overflow-hidden ${isFullscreen ? 'fixed inset-0 z-50 rounded-none' : 'w-full h-full min-h-[20px] sm:min-h-[100px]'}`}
         >
-
-            <div className="absolute top-2 right-2 z-20 flex flex-col gap-2">
-                {/* Fullscreen Toggle */}
-                {!isMobile &&
-                    <Button onClick={handleToggleFullscreen} className='bg-brown hover:bg-brown-dark transition duration-300 ease-in'>
-                        {isFullscreen ? <Shrink /> : <Expand />}
-                    </Button>}
-
+            <div className="absolute top-2 right-2 z-20">
+                {!isMobile && (
+                    <Button
+                        onClick={handleToggleFullscreen}
+                        size="sm"
+                        className='bg-brown hover:bg-brown-dark text-white'
+                    >
+                        {isFullscreen ? <Shrink size={16} /> : <Expand size={16} />}
+                    </Button>
+                )}
             </div>
 
-
-            {/* Loading indicator */}
             <AnimatePresence>
                 {isLoading && (
                     <motion.div
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
-                        className="absolute inset-0 flex items-center justify-center bg-white/80 backdrop-blur-sm z-10"
+                        className="absolute inset-0 flex items-center justify-center bg-white/90 z-10"
                     >
-                        <motion.div
-                            initial={{ scale: 0.8 }}
-                            animate={{ scale: 1 }}
-                            className="text-center"
-                        >
+                        <div className="text-center">
                             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500 mx-auto mb-3"></div>
-                            <p className="text-slate-700 font-medium">Se încarcă modelul 3D...</p>
-                        </motion.div>
+                            <p className="text-slate-700">Se încarcă modelul 3D...</p>
+                        </div>
                     </motion.div>
                 )}
             </AnimatePresence>
 
             <Canvas
-                onClick={isMobile ? handleToggleFullscreen : () => { }}
-                key={isFullscreen ? 'fullscreen' : 'normal'}
                 camera={cameraConfig}
-                style={{
-                    width: '100%',
-                    height: '100%'
-                }}
-                gl={{
-                    antialias: true,
-                    alpha: false,
-                    powerPreference: "high-performance"
-                }}
-                onCreated={({ gl, scene }) => {
-                    if (isMobile && !isFullscreen) {
-                        gl.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
-                    } else {
-                        gl.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-                    }
-
-                    // Set background color
-                    scene.background = new THREE.Color('#F8FAFC');
-                }}
+                style={{ width: '100%', height: '100%' }}
+                gl={{ antialias: true }}
+                onClick={isMobile ? handleToggleFullscreen : undefined}
             >
-                <color attach="background" args={["#F8FAFC"]} />
+                <ambientLight intensity={0.6} />
+                <directionalLight position={[5, 5, 5]} intensity={0.7} />
 
-                {/* Enhanced Lighting */}
-                <ambientLight intensity={(isMobile && !isFullscreen) ? 0.8 : 0.7} />
-                {/* <directionalLight
-                    position={(isMobile && !isFullscreen) ? [8, 8, 4] : [10, 10, 5]}
-                    intensity={(isMobile && !isFullscreen) ? 1.2 : 1}
-                    castShadow
-                    shadow-mapSize-width={1024}
-                    shadow-mapSize-height={1024}
-                />
-                <pointLight
-                    position={[0, 5, 0]}
-                    intensity={(isMobile && !isFullscreen) ? 0.4 : 0.5}
-                    color="#ffffff"
-                />
-                <hemisphereLight
-                    intensity={0.3}
-                    color="#ffffff"
-                    groundColor="#e2e8f0"
-                /> */}
-
-                {/* Model principal */}
-                <group position={[0, -1, 0]} scale={(isMobile && !isFullscreen) ? new THREE.Vector3(0.2, 0.2, 0.2) : new THREE.Vector3(0.3, 0.3, 0.3)}>
-                    {/* Piese deja plasate - statice */}
-                    {visiblePieces.map((piece, i) => {
-                        const data = usedPieces[i];
-                        if (data) {
-                            const finalPosition = new THREE.Vector3(0, 0, 0);
-                            return (
-                                <primitive
-                                    key={data._id}
-                                    object={piece}
-                                    position={finalPosition}
-                                />
-                            );
-                        }
-                        return null;
-                    })}
-
-
-
+                <group position={[0, -1, 0]} scale={isMobile ? [0.4, 0.4, 0.4] : [0.3, 0.3, 0.3]}>
+                    <Suspense fallback={<LoadingSpinner />}>
+                        <GLTFModel url={puzzle.model3D} onLoad={handleModelLoad} />
+                    </Suspense>
                 </group>
 
-                {threeScene === null && <SceneExporter onSceneReady={setThreeScene} />}
-
-                {/* Enhanced Controls */}
                 <OrbitControls
-                    ref={controlsRef}
-                    enablePan={!isMobile || isFullscreen}
-                    enableZoom={true}
-                    maxDistance={(isMobile && !isFullscreen) ? 8 : 12}
-                    minDistance={(isMobile && !isFullscreen) ? 2 : 3}
-                    enableDamping={true}
-                    dampingFactor={0.05}
-                    rotateSpeed={(isMobile && !isFullscreen) ? 0.8 : 1}
-                    zoomSpeed={(isMobile && !isFullscreen) ? 0.8 : 1}
+                    enablePan={!isMobile}
                     autoRotate={autoRotate}
-                    autoRotateSpeed={1} // poți ajusta viteza de rotație automată
+                    autoRotateSpeed={1}
                 />
 
-                {/* Enhanced Environment */}
-                <Environment
-                    preset="apartment"
-                    background={false}
-                    environmentIntensity={0.6}
-                />
+                <Environment preset="city" />
             </Canvas>
-
-
-
-            {/* Animation Status */}
-            <AnimatePresence>
-                {!isAnimating && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/70 text-white px-4 py-2 rounded-full pointer-events-none"
-                    >
-                        <div className="flex items-center gap-2">
-                            <Pause className="w-4 h-4" />
-                            <span className="text-sm">Animație oprită</span>
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
         </motion.div>
     );
-}
+};
 
 export default PuzzleFinalResult;
