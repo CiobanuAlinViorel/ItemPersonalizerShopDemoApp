@@ -20,7 +20,6 @@ import { ParsedSVGImage } from './PuzzleComponent'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 
-
 type StepListProps = {
     steps: IPuzzleSteps[],
     usedPieces: PuzzlePiece[],
@@ -67,13 +66,20 @@ const StepItem = memo(({
     previewKey: number,
     setShowCongrats: (value: boolean) => void;
 }) => {
+    const isTransitioning = useRef(false);
+
     const handleFinalizeStep = useCallback(() => {
+        if (isTransitioning.current) return;
+
+        isTransitioning.current = true;
+
         if (step.stepNumber < puzzle.steps.length) {
             const piecesToUse = stepUnusedPieces.filter(p => p.step === step.stepNumber);
             if (piecesToUse.length > 0) {
                 onUsePieces(piecesToUse);
             }
             onStepChange(step.stepNumber + 1);
+            isTransitioning.current = false;
         } else {
             // Este ultimul pas
             const piecesToUse = stepUnusedPieces.filter(p => p.step === step.stepNumber);
@@ -82,9 +88,11 @@ const StepItem = memo(({
                 // Așteaptă să se actualizeze starea înainte de a arăta congratulațiile
                 setTimeout(() => {
                     setShowCongrats(true);
+                    isTransitioning.current = false;
                 }, 300);
             } else {
                 setShowCongrats(true);
+                isTransitioning.current = false;
             }
         }
     }, [stepUnusedPieces, step.stepNumber, onUsePieces, onStepChange, puzzle.steps.length, setShowCongrats]);
@@ -382,15 +390,6 @@ const StepsListComponent = ({
             router.push('/');
         }, 100);
     }, [router, steps, resetToLast]);
-
-    // Verifică dacă puzzle-ul este complet
-    useEffect(() => {
-        if (isPuzzleComplete && !showCongrats && isInitialized && currentStep === steps.length) {
-            setTimeout(() => {
-                setShowCongrats(true);
-            }, 500);
-        }
-    }, [isPuzzleComplete, showCongrats, isInitialized, currentStep, steps.length]);
 
     if (!isInitialized || !isVisible) {
         return null;
