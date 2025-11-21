@@ -25,6 +25,7 @@ export default async function RootLayout({
       >
         <Header />
         {children}
+        <SpeedInsights />
         <Toaster position="top-right" reverseOrder={false} />
       </body>
     </html>
