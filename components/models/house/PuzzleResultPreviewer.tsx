@@ -20,11 +20,13 @@ type IPuzzleResultPreviewer = {
     isVisible?: boolean
 }
 
+// Helper function pentru a obține devicePixelRatio în mod safe
 const getSafeDevicePixelRatio = (maxRatio: number = 2): number => {
     if (typeof window === 'undefined') return 1;
     return Math.min(window.devicePixelRatio, maxRatio);
 };
 
+// Component pentru managementul calității
 const QualityManager = ({
     quality,
     isMobile
@@ -58,7 +60,7 @@ const QualityManager = ({
     return null;
 };
 
-// 🎯 Component simplu pentru piese statice (fără shared geometry - revert la simplitate)
+// Component pentru a combina toate piesele statice într-un singur mesh
 const CombinedStaticPieces = React.memo(({
     pieces,
     usedPiecesData
@@ -66,30 +68,80 @@ const CombinedStaticPieces = React.memo(({
     pieces: any[],
     usedPiecesData: PuzzlePiece[]
 }) => {
-    return (
-        <>
-            {pieces.map((piece, index) => {
-                const data = usedPiecesData[index];
-                if (!piece || !data) return null;
+    const groupRef = useRef<THREE.Group>(null);
+    const [combinedMesh, setCombinedMesh] = useState<THREE.Group | null>(null);
 
-                const placement = data.placementDir?.end;
-                const position = placement && Array.isArray(placement) && placement.length >= 3
-                    ? [placement[0], placement[1], placement[2]]
-                    : [0, 0, 0];
+    // Combină toate piesele într-un singur group
+    useEffect(() => {
+        if (!pieces.length || !usedPiecesData.length || pieces.length !== usedPiecesData.length) {
+            setCombinedMesh(null);
+            return;
+        }
 
-                return (
-                    <group key={data._id} position={position as any}>
-                        <primitive object={piece} />
-                    </group>
-                );
-            })}
-        </>
-    );
+        const combinedGroup = new THREE.Group();
+
+        pieces.forEach((piece, index) => {
+            if (piece && usedPiecesData[index]) {
+                try {
+                    // Clonează întregul obiect (inclusiv toate children-urile)
+                    const clonedPiece = piece.clone(true);
+
+                    // Aplică poziția corectă din placementDir.end
+                    const placement = usedPiecesData[index].placementDir?.end;
+                    if (placement && Array.isArray(placement) && placement.length >= 3) {
+                        clonedPiece.position.set(
+                            placement[0] || 0,
+                            placement[1] || 0,
+                            placement[2] || 0
+                        );
+                    }
+
+                    // Copiem proprietățile de rotation și scale dacă există
+
+
+                    combinedGroup.add(clonedPiece);
+                } catch (error) {
+                    console.error('Error cloning piece:', error, usedPiecesData[index]);
+                }
+            }
+        });
+
+        // Debug: verifică ce am creat
+        console.log('Combined static pieces:', {
+            totalPieces: pieces.length,
+            combinedChildren: combinedGroup.children.length,
+            positions: combinedGroup.children.map(child => child.position)
+        });
+
+        setCombinedMesh(combinedGroup);
+
+        return () => {
+            // Cleanup
+            combinedGroup.traverse(child => {
+                if (child instanceof THREE.Mesh) {
+                    child.geometry?.dispose();
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(material => material.dispose());
+                    } else {
+                        child.material?.dispose();
+                    }
+                }
+            });
+        };
+    }, [pieces, usedPiecesData]);
+
+    if (!combinedMesh) {
+        console.log('No combined mesh to render');
+        return null;
+    }
+
+    console.log('Rendering combined mesh with', combinedMesh.children.length, 'children');
+    return <primitive object={combinedMesh} />;
 });
 
 CombinedStaticPieces.displayName = 'CombinedStaticPieces';
 
-// Fallback simplu dacă optimized nu funcționează
+// Fallback component pentru a afișa piesele individual dacă combined nu funcționează
 const StaticPiecesFallback = React.memo(({
     pieces,
     usedPiecesData
@@ -120,7 +172,7 @@ const StaticPiecesFallback = React.memo(({
 
 StaticPiecesFallback.displayName = 'StaticPiecesFallback';
 
-// Animated Piece optimizat (fără modificări majore, dar mai clean)
+// Optimized Animated Piece with placementDir animation
 const AnimatedPiece = React.memo(({
     piece,
     finalPosition,
@@ -140,8 +192,11 @@ const AnimatedPiece = React.memo(({
 }) => {
     const meshRef = useRef<THREE.Group>(null);
     const progressRef = useRef(0);
+    const [showArrow, setShowArrow] = useState(false);
     const animationRef = useRef<number | null>(null);
-    const [isReady, setIsReady] = useState(false);
+
+    const boundingBoxRef = useRef<THREE.Box3>(new THREE.Box3());
+    const pieceSizeRef = useRef<THREE.Vector3>(new THREE.Vector3());
 
     const startPosition = useMemo(() => {
         if (placementDir?.start) {
@@ -169,23 +224,18 @@ const AnimatedPiece = React.memo(({
         return finalPosition;
     }, [finalPosition, placementDir]);
 
+    useEffect(() => {
+        if (piece) {
+            boundingBoxRef.current.setFromObject(piece);
+            boundingBoxRef.current.getSize(pieceSizeRef.current);
+        }
+    }, [piece]);
+
     const tempVector = useMemo(() => new THREE.Vector3(), []);
     const easeOutCubic = useCallback((t: number) => 1 - Math.pow(1 - t, 3), []);
 
-    // 🔧 FIX: Inițializare mesh cu vizibilitate corectă
-    useEffect(() => {
-        if (meshRef.current && piece) {
-            meshRef.current.visible = false;
-            meshRef.current.position.copy(startPosition);
-            // Forțează update matrices
-            meshRef.current.updateMatrix();
-            meshRef.current.updateMatrixWorld(true);
-            setIsReady(true);
-        }
-    }, [piece, startPosition]);
-
     useFrame(() => {
-        if (!meshRef.current || !isAnimating || !isReady) return;
+        if (!meshRef.current || !isAnimating) return;
 
         const progress = progressRef.current;
         const eased = easeOutCubic(Math.max(0, progress));
@@ -208,8 +258,9 @@ const AnimatedPiece = React.memo(({
     });
 
     useEffect(() => {
-        if (!isAnimating || !isReady) {
+        if (!isAnimating) {
             progressRef.current = 0;
+            setShowArrow(false);
             if (animationRef.current) {
                 cancelAnimationFrame(animationRef.current);
                 animationRef.current = null;
@@ -224,6 +275,7 @@ const AnimatedPiece = React.memo(({
         }
 
         progressRef.current = 0;
+        setShowArrow(true);
 
         const timer = setTimeout(() => {
             const duration = 1500;
@@ -235,9 +287,14 @@ const AnimatedPiece = React.memo(({
 
                 progressRef.current = newProgress;
 
+                if (newProgress >= 0.8) {
+                    setShowArrow(false);
+                }
+
                 if (newProgress < 1) {
                     animationRef.current = requestAnimationFrame(animate);
                 } else {
+                    setShowArrow(false);
                     animationRef.current = null;
                 }
             };
@@ -252,7 +309,7 @@ const AnimatedPiece = React.memo(({
                 animationRef.current = null;
             }
         };
-    }, [isAnimating, delay, animationKey, startPosition, isReady]);
+    }, [isAnimating, delay, animationKey, startPosition]);
 
     return (
         <group ref={meshRef}>
@@ -277,11 +334,13 @@ const PuzzleResultPreviewer = ({
     const [lastPieces, setLastPieces] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const controlsRef = useRef<any>(null);
+    const [useCombinedMesh, setUseCombinedMesh] = useState(true);
 
     const [isAnimating, setIsAnimating] = useState(true);
     const [animationKey, setAnimationKey] = useState(0);
     const [adaptiveQuality, setAdaptiveQuality] = useState<'low' | 'medium' | 'high'>('medium');
 
+    // Calitate adaptivă
     useEffect(() => {
         let quality: 'low' | 'medium' | 'high' = 'medium';
 
@@ -302,6 +361,7 @@ const PuzzleResultPreviewer = ({
         setAdaptiveQuality(quality);
     }, [isVisible, isMobile, priority]);
 
+    // Configurație calitate detaliată
     const qualityConfig = useMemo(() => {
         const configs = {
             high: {
@@ -363,46 +423,23 @@ const PuzzleResultPreviewer = ({
     );
 
     const load3DComponent = useCallback(async (pieces: PuzzlePiece[]) => {
-        if (!isVisible || pieces.length === 0) {
-            setVisiblePieces([]);
-            setIsLoading(false);
-            return;
-        }
+        if (!isVisible) return;
 
-        console.time('🎨 Load 3D Component');
-
-        // 🎯 OPTIMIZARE: Verifică dacă piesele s-au schimbat cu adevărat
-        const pieceIds = pieces.map(p => p._id).sort().join(',');
-        const prevPieceIds = visiblePieces.length > 0
-            ? usedPieces.map(p => p._id).sort().join(',')
-            : '';
-
-        if (pieceIds === prevPieceIds && visiblePieces.length > 0) {
-            console.log('⏭️ Skipping reload - same pieces');
-            console.timeEnd('🎨 Load 3D Component');
-            return;
-        }
-
-        console.log('🔄 Loading 3D pieces:', pieces.length);
         setIsLoading(true);
-
         try {
-            console.time('  └─ GLB Loading');
             const loadedPieces = await loadPuzzlePieces(pieces);
-            console.timeEnd('  └─ GLB Loading');
-
-            console.time('  └─ State Update');
+            console.log('Loaded static pieces:', {
+                requested: pieces.length,
+                loaded: loadedPieces.length,
+                pieces: pieces.map(p => ({ id: p._id, placement: p.placementDir?.end }))
+            });
             setVisiblePieces(loadedPieces);
-            console.timeEnd('  └─ State Update');
-
-            console.log('✅ Loaded 3D pieces:', loadedPieces.length);
         } catch (error) {
             console.error('Error loading puzzle pieces:', error);
         } finally {
             setIsLoading(false);
-            console.timeEnd('🎨 Load 3D Component');
         }
-    }, [isVisible, visiblePieces.length, usedPieces]);
+    }, [isVisible]);
 
     const loadAnimatedPieces = useCallback(async (pieces: PuzzlePiece[]) => {
         if (!isVisible || pieces.length === 0) {
@@ -418,17 +455,6 @@ const PuzzleResultPreviewer = ({
             return;
         }
 
-        // 🎯 OPTIMIZARE: Verifică dacă piesele s-au schimbat
-        const newIds = filtered.map(p => p._id).sort().join(',');
-        const currentIds = lastPieces.map(p => p.data._id).sort().join(',');
-
-        if (newIds === currentIds && lastPieces.length > 0) {
-            console.log('⏭️ Skipping animated reload - same pieces');
-            return;
-        }
-
-        console.log('🎬 Loading animated pieces:', filtered.length);
-
         try {
             const meshes = await loadPuzzlePieces(filtered);
             const combined = filtered.map((data, i) => ({
@@ -439,19 +465,15 @@ const PuzzleResultPreviewer = ({
 
             setIsAnimating(true);
             setAnimationKey(prev => prev + 1);
-
-            console.log('✅ Loaded animated pieces:', combined.length);
         } catch (error) {
             console.error('Error loading animated pieces:', error);
         }
-    }, [isVisible, lastPieces]);
+    }, [isMobile, isVisible]);
 
-    // Effect pentru încărcare piese statice
     useEffect(() => {
         load3DComponent(usedPieces);
     }, [usedPieces, load3DComponent]);
 
-    // Effect pentru încărcare piesele animate
     useEffect(() => {
         loadAnimatedPieces(unusedPieces);
     }, [unusedPieces, loadAnimatedPieces]);
@@ -544,6 +566,8 @@ const PuzzleResultPreviewer = ({
                 )}
             </AnimatePresence>
 
+
+
             <Canvas
                 camera={cameraConfig}
                 onClick={restartAnimation}
@@ -551,7 +575,6 @@ const PuzzleResultPreviewer = ({
                     width: '100%',
                     height: '100%'
                 }}
-                frameloop={isAnimating ? 'always' : 'demand'} // 🔧 FIX: Demand când nu animează
                 {...sceneConfig}
             >
                 <color attach="background" args={["#F8FAFC"]} />
@@ -585,15 +608,24 @@ const PuzzleResultPreviewer = ({
                 />
 
                 <group position={[0, 0, 0]} scale={scale}>
-                    {/* Static pieces - simplu și direct, fără optimizări complexe */}
+                    {/* Static pieces - folosim combined sau fallback */}
                     {visiblePieces.length > 0 && usedPieces.length > 0 && (
-                        <CombinedStaticPieces
-                            pieces={visiblePieces}
-                            usedPiecesData={usedPieces}
-                        />
+                        <>
+                            {useCombinedMesh ? (
+                                <CombinedStaticPieces
+                                    pieces={visiblePieces}
+                                    usedPiecesData={usedPieces}
+                                />
+                            ) : (
+                                <StaticPiecesFallback
+                                    pieces={visiblePieces}
+                                    usedPiecesData={usedPieces}
+                                />
+                            )}
+                        </>
                     )}
 
-                    {/* Animated pieces */}
+                    {/* Animated pieces - rămân separate pentru animație */}
                     {lastPieces.map((pieceObj, i) => {
                         const { data, mesh }: { data: PuzzlePiece, mesh: any } = pieceObj;
                         return data && mesh ? (
@@ -616,7 +648,6 @@ const PuzzleResultPreviewer = ({
                 <OrbitControls
                     ref={controlsRef}
                     {...controlsConfig}
-                    enabled={isVisible} // 🔧 FIX: Disable când nu e vizibil
                 />
 
                 <Environment

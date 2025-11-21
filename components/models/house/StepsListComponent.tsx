@@ -20,6 +20,7 @@ import { ParsedSVGImage } from './PuzzleComponent'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 
+
 type StepListProps = {
     steps: IPuzzleSteps[],
     usedPieces: PuzzlePiece[],
@@ -66,34 +67,23 @@ const StepItem = memo(({
     previewKey: number,
     setShowCongrats: (value: boolean) => void;
 }) => {
-    const isTransitioning = useRef(false);
-
     const handleFinalizeStep = useCallback(() => {
-        if (isTransitioning.current) return;
-
-        isTransitioning.current = true;
+        const piecesToUse = stepUnusedPieces.filter(p => p.step === step.stepNumber);
 
         if (step.stepNumber < puzzle.steps.length) {
-            const piecesToUse = stepUnusedPieces.filter(p => p.step === step.stepNumber);
+            // Nu este ultimul pas
             if (piecesToUse.length > 0) {
                 onUsePieces(piecesToUse);
             }
             onStepChange(step.stepNumber + 1);
-            isTransitioning.current = false;
-        } else {
+        } else if (step.stepNumber === puzzle.steps.length) {
             // Este ultimul pas
-            const piecesToUse = stepUnusedPieces.filter(p => p.step === step.stepNumber);
-            if (piecesToUse.length > 0) {
-                onUsePieces(piecesToUse);
-                // Așteaptă să se actualizeze starea înainte de a arăta congratulațiile
-                setTimeout(() => {
-                    setShowCongrats(true);
-                    isTransitioning.current = false;
-                }, 300);
-            } else {
+            onUsePieces(piecesToUse);
+
+            // Așteaptă să se actualizeze starea înainte de a arăta congratulațiile
+            setTimeout(() => {
                 setShowCongrats(true);
-                isTransitioning.current = false;
-            }
+            }, 300);
         }
     }, [stepUnusedPieces, step.stepNumber, onUsePieces, onStepChange, puzzle.steps.length, setShowCongrats]);
 
@@ -356,6 +346,9 @@ const StepsListComponent = ({
             const isDone = step.stepNumber < currentStep;
             const state = isCurrent ? StepState.CURRENT : isDone ? StepState.DONE : StepState.UNDONE;
 
+            // Pentru preview-ul 3D: arată toate piesele folosite ÎNAINTE de acest pas
+            // Adică, dacă suntem la pasul 3, arată piesele din pasul 1 și 2
+            // Piesele din pasul curent sunt în stepUnusedPieces
             const stepUsedPieces = usedPieces.filter(p => p.step < step.stepNumber);
             const stepUnusedPieces = unusedPieces.filter(p => p.step === step.stepNumber);
             const stepSvgImages = svgImages.filter(svg => svg.piece.step === step.stepNumber);
@@ -372,12 +365,10 @@ const StepsListComponent = ({
     );
 
     const handleReview = useCallback(() => {
+        // Închide doar dialogul de congratulații
+        // Utilizatorul rămâne la ultimul pas cu toate piesele deja folosite
         setShowCongrats(false);
-        const lastStep = steps[steps.length - 1];
-        if (lastStep) {
-            handleStepChange(steps.length);
-        }
-    }, [steps, handleStepChange]);
+    }, []);
 
     const handleGoHome = useCallback(() => {
         setShowCongrats(false);
@@ -390,10 +381,6 @@ const StepsListComponent = ({
             router.push('/');
         }, 100);
     }, [router, steps, resetToLast]);
-
-    if (!isInitialized || !isVisible) {
-        return null;
-    }
 
     return (
         <div className={`bg-white/95 w-full backdrop-blur-sm rounded-3xl shadow-2xl border border-gray-200 p-4 md:p-6 transition-all duration-500 ease-out transform mx-auto ${isVisible ? "flex flex-col opacity-100 scale-100" : "scale-95 pointer-events-none opacity-0"

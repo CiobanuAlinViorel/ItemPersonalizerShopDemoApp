@@ -23,6 +23,9 @@ const PuzzleComponent = (props: Props) => {
     const [isLoading, setIsLoading] = useState(false);
     const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+    // 🔥 CRITICAL FIX: Flag pentru a preveni reinițializarea
+    const isInitializedRef = useRef(false);
+
     const {
         products,
         usedPieces,
@@ -133,12 +136,24 @@ const PuzzleComponent = (props: Props) => {
         };
     }, [loadAllSVGsAsImages]);
 
-    // Initialize puzzle only when products are available
+    // 🔥 FIX: Initialize puzzle DOAR O SINGURĂ DATĂ
     useEffect(() => {
-        if (products && products.length > 0 && unusedPieces.length === 0) {
+        // Verifică dacă:
+        // 1. Avem produse disponibile
+        // 2. NU am inițializat deja puzzle-ul (folosim ref-ul)
+        // 3. Nu avem nici piese folosite, nici piese nefolosite (stare complet goală)
+        if (
+            products &&
+            products.length > 0 &&
+            !isInitializedRef.current &&
+            unusedPieces.length === 0 &&
+            usedPieces.length === 0
+        ) {
+            console.log('🎯 Initializing puzzle for the FIRST time');
             initializePuzzle(products[0].pieces);
+            isInitializedRef.current = true;
         }
-    }, [products, initializePuzzle, unusedPieces.length]);
+    }, [products, initializePuzzle, unusedPieces.length, usedPieces.length]);
 
     // Optimized mobile detection with debouncing
     useEffect(() => {
